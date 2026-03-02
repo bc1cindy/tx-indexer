@@ -5,9 +5,9 @@ use std::path::Path;
 
 use crate::dense::TxId;
 
-const TXPTR_LEN_BYTES: u64 = 28;
-const BLOCK_TX_END_LEN_BYTES: u64 = 4;
-const LINK_LEN_BYTES: u64 = 8;
+const TXPTR_LEN_BYTES: usize = 28;
+const BLOCK_TX_END_LEN_BYTES: usize = 4;
+const LINK_LEN_BYTES: usize = 8;
 
 pub const OUTID_NONE: u64 = u64::MAX;
 pub const INID_NONE: u64 = u64::MAX;
@@ -59,8 +59,8 @@ impl TxPtr {
         self.tx_out_end
     }
 
-    fn to_le_bytes(self) -> [u8; 28] {
-        let mut out = [0u8; 28];
+    fn to_le_bytes(self) -> [u8; TXPTR_LEN_BYTES] {
+        let mut out = [0u8; TXPTR_LEN_BYTES];
         out[..4].copy_from_slice(&self.blk_file_no.to_le_bytes());
         out[4..8].copy_from_slice(&self.blk_file_off.to_le_bytes());
         out[8..12].copy_from_slice(&self.tx_len.to_le_bytes());
@@ -69,7 +69,7 @@ impl TxPtr {
         out
     }
 
-    fn from_le_bytes(bytes: [u8; 28]) -> Self {
+    fn from_le_bytes(bytes: [u8; TXPTR_LEN_BYTES]) -> Self {
         let blk_file_no = u32::from_le_bytes(bytes[..4].try_into().expect("slice length"));
         let blk_file_off = u32::from_le_bytes(bytes[4..8].try_into().expect("slice length"));
         let tx_len = u32::from_le_bytes(bytes[8..12].try_into().expect("slice length"));
@@ -86,31 +86,13 @@ impl TxPtr {
 }
 
 #[derive(Debug)]
-pub struct ConfirmedTxPtrIndex {
+struct FixedWidthIndex<const N: usize> {
     file: File,
     len: u64,
 }
 
-#[derive(Debug)]
-pub struct BlockTxIndex {
-    file: File,
-    len: u64,
-}
-
-#[derive(Debug)]
-pub struct InPrevoutIndex {
-    file: File,
-    len: u64,
-}
-
-#[derive(Debug)]
-pub struct OutSpentByIndex {
-    file: File,
-    len: u64,
-}
-
-impl ConfirmedTxPtrIndex {
-    pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
+impl<const N: usize> FixedWidthIndex<N> {
+    fn create(path: impl AsRef<Path>) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -120,208 +102,200 @@ impl ConfirmedTxPtrIndex {
         Ok(Self { file, len: 0 })
     }
 
-    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+    fn open(path: impl AsRef<Path>, len_error: &'static str) -> io::Result<Self> {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         let len_bytes = file.metadata()?.len();
-        if len_bytes % TXPTR_LEN_BYTES != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "confirmed tx ptr file length is not a multiple of 28 bytes",
-            ));
+        if len_bytes % (N as u64) != 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, len_error));
         }
         Ok(Self {
             file,
-            len: len_bytes / TXPTR_LEN_BYTES,
+            len: len_bytes / (N as u64),
+        })
+    }
+
+    fn len(&self) -> u64 {
+        self.len
+    }
+
+    fn append_bytes(&mut self, bytes: &[u8; N]) -> io::Result<u64> {
+        self.file.seek(SeekFrom::End(0))?;
+        self.file.write_all(bytes)?;
+        self.len += 1;
+        Ok(self.len - 1)
+    }
+
+    fn set_bytes(&mut self, index: u64, bytes: &[u8; N]) -> io::Result<()> {
+        let offset = index * (N as u64);
+        self.file.seek(SeekFrom::Start(offset))?;
+        self.file.write_all(bytes)
+    }
+
+    fn get_bytes(&self, index: u64) -> io::Result<Option<[u8; N]>> {
+        if index >= self.len {
+            return Ok(None);
+        }
+        let offset = index * (N as u64);
+        let mut buf = [0u8; N];
+        self.file.read_exact_at(&mut buf, offset)?;
+        Ok(Some(buf))
+    }
+}
+
+#[derive(Debug)]
+pub struct ConfirmedTxPtrIndex {
+    inner: FixedWidthIndex<TXPTR_LEN_BYTES>,
+}
+
+#[derive(Debug)]
+pub struct BlockTxIndex {
+    inner: FixedWidthIndex<BLOCK_TX_END_LEN_BYTES>,
+}
+
+#[derive(Debug)]
+pub struct InPrevoutIndex {
+    inner: FixedWidthIndex<LINK_LEN_BYTES>,
+}
+
+#[derive(Debug)]
+pub struct OutSpentByIndex {
+    inner: FixedWidthIndex<LINK_LEN_BYTES>,
+}
+
+impl ConfirmedTxPtrIndex {
+    pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self {
+            inner: FixedWidthIndex::create(path)?,
+        })
+    }
+
+    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self {
+            inner: FixedWidthIndex::open(
+                path,
+                "confirmed tx ptr file length is not a multiple of 28 bytes",
+            )?,
         })
     }
 
     pub fn len(&self) -> u64 {
-        self.len
+        self.inner.len()
     }
 
     pub fn append(&mut self, ptr: TxPtr) -> io::Result<TxId> {
-        if self.len > u32::MAX as u64 {
+        if self.inner.len() > u32::MAX as u64 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "confirmed tx ptr index exceeds u32::MAX entries",
             ));
         }
-        let txid = TxId::new(self.len as u32);
-        self.file.seek(SeekFrom::End(0))?;
-        self.file.write_all(&ptr.to_le_bytes())?;
-        self.len += 1;
+        let txid = TxId::new(self.inner.len() as u32);
+        let _ = self.inner.append_bytes(&ptr.to_le_bytes())?;
         Ok(txid)
     }
 
     pub fn get(&self, txid: TxId) -> io::Result<Option<TxPtr>> {
         let index = txid.index() as u64;
-        if index >= self.len {
-            return Ok(None);
-        }
-        let offset = index * TXPTR_LEN_BYTES;
-        let mut buf = [0u8; 28];
-        self.file.read_exact_at(&mut buf, offset)?;
-        Ok(Some(TxPtr::from_le_bytes(buf)))
+        Ok(self.inner.get_bytes(index)?.map(TxPtr::from_le_bytes))
     }
 }
 
 impl BlockTxIndex {
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?;
-        Ok(Self { file, len: 0 })
+        Ok(Self {
+            inner: FixedWidthIndex::create(path)?,
+        })
     }
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        let len_bytes = file.metadata()?.len();
-        if len_bytes % BLOCK_TX_END_LEN_BYTES != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "block tx end file length is not a multiple of 4 bytes",
-            ));
-        }
         Ok(Self {
-            file,
-            len: len_bytes / BLOCK_TX_END_LEN_BYTES,
+            inner: FixedWidthIndex::open(
+                path,
+                "block tx end file length is not a multiple of 4 bytes",
+            )?,
         })
     }
 
     pub fn len(&self) -> u64 {
-        self.len
+        self.inner.len()
     }
 
     pub fn last(&self) -> io::Result<Option<u32>> {
-        if self.len == 0 {
+        let len = self.inner.len();
+        if len == 0 {
             return Ok(None);
         }
-        let offset = (self.len - 1) * BLOCK_TX_END_LEN_BYTES;
-        let mut buf = [0u8; 4];
-        self.file.read_exact_at(&mut buf, offset)?;
-        Ok(Some(u32::from_le_bytes(buf)))
+        Ok(self.inner.get_bytes(len - 1)?.map(u32::from_le_bytes))
     }
 
     pub fn append(&mut self, block_tx_end: u32) -> io::Result<u64> {
-        self.file.seek(SeekFrom::End(0))?;
-        self.file.write_all(&block_tx_end.to_le_bytes())?;
-        self.len += 1;
-        Ok(self.len - 1)
+        self.inner.append_bytes(&block_tx_end.to_le_bytes())
     }
 
     pub fn get(&self, height: u64) -> io::Result<Option<u32>> {
-        if height >= self.len {
-            return Ok(None);
-        }
-        let offset = height * BLOCK_TX_END_LEN_BYTES;
-        let mut buf = [0u8; 4];
-        self.file.read_exact_at(&mut buf, offset)?;
-        Ok(Some(u32::from_le_bytes(buf)))
+        Ok(self.inner.get_bytes(height)?.map(u32::from_le_bytes))
     }
 }
 
 impl InPrevoutIndex {
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?;
-        Ok(Self { file, len: 0 })
+        Ok(Self {
+            inner: FixedWidthIndex::create(path)?,
+        })
     }
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        let len_bytes = file.metadata()?.len();
-        if len_bytes % LINK_LEN_BYTES != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "in_prevout_outid file length is not a multiple of 8 bytes",
-            ));
-        }
         Ok(Self {
-            file,
-            len: len_bytes / LINK_LEN_BYTES,
+            inner: FixedWidthIndex::open(
+                path,
+                "in_prevout_outid file length is not a multiple of 8 bytes",
+            )?,
         })
     }
 
     pub fn len(&self) -> u64 {
-        self.len
+        self.inner.len()
     }
 
     pub fn append(&mut self, out_id: u64) -> io::Result<u64> {
-        self.file.seek(SeekFrom::End(0))?;
-        self.file.write_all(&out_id.to_le_bytes())?;
-        self.len += 1;
-        Ok(self.len - 1)
+        self.inner.append_bytes(&out_id.to_le_bytes())
     }
 
     pub fn get(&self, in_id: u64) -> io::Result<Option<u64>> {
-        if in_id >= self.len {
-            return Ok(None);
-        }
-        let offset = in_id * LINK_LEN_BYTES;
-        let mut buf = [0u8; 8];
-        self.file.read_exact_at(&mut buf, offset)?;
-        Ok(Some(u64::from_le_bytes(buf)))
+        Ok(self.inner.get_bytes(in_id)?.map(u64::from_le_bytes))
     }
 }
 
 impl OutSpentByIndex {
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?;
-        Ok(Self { file, len: 0 })
+        Ok(Self {
+            inner: FixedWidthIndex::create(path)?,
+        })
     }
 
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        let len_bytes = file.metadata()?.len();
-        if len_bytes % LINK_LEN_BYTES != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "out_spent_by_inid file length is not a multiple of 8 bytes",
-            ));
-        }
         Ok(Self {
-            file,
-            len: len_bytes / LINK_LEN_BYTES,
+            inner: FixedWidthIndex::open(
+                path,
+                "out_spent_by_inid file length is not a multiple of 8 bytes",
+            )?,
         })
     }
 
     pub fn len(&self) -> u64 {
-        self.len
+        self.inner.len()
     }
 
     pub fn append(&mut self, in_id: u64) -> io::Result<u64> {
-        self.file.seek(SeekFrom::End(0))?;
-        self.file.write_all(&in_id.to_le_bytes())?;
-        self.len += 1;
-        Ok(self.len - 1)
+        self.inner.append_bytes(&in_id.to_le_bytes())
     }
 
     pub fn set(&mut self, out_id: u64, in_id: u64) -> io::Result<()> {
-        let offset = out_id * LINK_LEN_BYTES;
-        self.file.seek(SeekFrom::Start(offset))?;
-        self.file.write_all(&in_id.to_le_bytes())
+        self.inner.set_bytes(out_id, &in_id.to_le_bytes())
     }
 
     pub fn get(&self, out_id: u64) -> io::Result<Option<u64>> {
-        if out_id >= self.len {
-            return Ok(None);
-        }
-        let offset = out_id * LINK_LEN_BYTES;
-        let mut buf = [0u8; 8];
-        self.file.read_exact_at(&mut buf, offset)?;
-        Ok(Some(u64::from_le_bytes(buf)))
+        Ok(self.inner.get_bytes(out_id)?.map(u64::from_le_bytes))
     }
 }
 

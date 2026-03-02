@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::PathBuf,

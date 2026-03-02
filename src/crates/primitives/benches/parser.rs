@@ -1,9 +1,6 @@
 use bitcoin_test_data::blocks::mainnet_702861;
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use std::{
-    fs::{self},
-    path::PathBuf,
-};
+use std::fs::{self};
 
 use tx_indexer_primitives::{
     dense::IndexPaths,
