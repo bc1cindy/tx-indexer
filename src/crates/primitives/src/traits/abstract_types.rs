@@ -66,6 +66,8 @@ pub trait AbstractTransaction {
     fn output_at(&self, index: usize) -> Option<Box<dyn AbstractTxOut + '_>>;
 
     fn locktime(&self) -> u32;
+
+    fn is_coinbase(&self) -> bool;
 }
 
 pub trait HasNLockTime: AbstractTransaction {
