@@ -47,7 +47,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Run unit tests
-        run: cargo test --lib --no-fail-fast
+        run: cargo test --no-fail-fast
 
   bench:
     name: Bench Suite
