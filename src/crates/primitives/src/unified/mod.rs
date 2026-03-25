@@ -457,7 +457,7 @@ impl TxIoIndex for UnifiedStorage {
                 .txs
                 .get(&loose_txid)
                 .expect("loose txid not found in storage");
-            let input_len = tx.inputs().count();
+            let input_len = tx.input_len();
             return (0..input_len)
                 .map(|vin| AnyInId::from(loose::TxInId::new(loose_txid, vin as u32)))
                 .collect();

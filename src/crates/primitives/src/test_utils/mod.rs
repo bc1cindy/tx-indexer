@@ -6,7 +6,7 @@ use crate::{
     traits::HasNLockTime,
     traits::abstract_types::{
         AbstractTransaction, AbstractTxIn, AbstractTxOut, EnumerateOutputValueInArbitraryOrder,
-        EnumerateSpentTxOuts, OutputCount, TxConstituent,
+        EnumerateSpentTxOuts, InputCount, OutputCount, TxConstituent,
     },
 };
 
@@ -121,6 +121,10 @@ impl AbstractTransaction for DummyTxData {
         Box::new(outputs.into_iter())
     }
 
+    fn input_len(&self) -> usize {
+        self.spent_coins.len()
+    }
+
     fn output_len(&self) -> usize {
         self.outputs.len()
     }
@@ -139,6 +143,12 @@ impl AbstractTransaction for DummyTxData {
 impl OutputCount for DummyTxData {
     fn output_count(&self) -> usize {
         self.outputs.len()
+    }
+}
+
+impl InputCount for DummyTxData {
+    fn input_count(&self) -> usize {
+        self.spent_coins.len()
     }
 }
 

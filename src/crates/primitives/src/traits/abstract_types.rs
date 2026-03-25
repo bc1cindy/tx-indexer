@@ -14,6 +14,10 @@ pub trait OutputCount: AbstractTransaction {
     fn output_count(&self) -> usize;
 }
 
+pub trait InputCount: AbstractTransaction {
+    fn input_count(&self) -> usize;
+}
+
 pub trait EnumerateSpentTxOuts: AbstractTransaction {
     fn spent_coins(&self) -> impl Iterator<Item = AnyOutId>;
 }
@@ -54,6 +58,8 @@ pub trait AbstractTransaction {
     fn inputs(&self) -> Box<dyn Iterator<Item = Box<dyn AbstractTxIn + '_>> + '_>;
     /// Returns an iterator over transaction outputs
     fn outputs(&self) -> Box<dyn Iterator<Item = Box<dyn AbstractTxOut + '_>> + '_>;
+    /// Returns the number of inputs
+    fn input_len(&self) -> usize;
     /// Returns the number of outputs
     fn output_len(&self) -> usize;
     /// Returns the output at the given index, if it exists

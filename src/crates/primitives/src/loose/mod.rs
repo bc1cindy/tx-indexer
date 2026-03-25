@@ -258,7 +258,7 @@ impl TxIoIndex for InMemoryIndex {
             .txs
             .get(&loose_txid)
             .expect("loose txid not found in storage");
-        let input_len = tx.inputs().count();
+        let input_len = tx.input_len();
         (0..input_len)
             .map(|vin| AnyInId::from(TxInId::new(loose_txid, vin as u32)))
             .collect()

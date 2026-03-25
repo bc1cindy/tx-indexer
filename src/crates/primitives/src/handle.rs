@@ -5,7 +5,7 @@ use crate::{
         abstract_types::{
             AbstractTransaction, AbstractTxIn, AbstractTxOut, EnumerateInputValueInArbitraryOrder,
             EnumerateOutputValueInArbitraryOrder, EnumerateSpentTxOuts, HasScriptPubkey,
-            HasSequence, OutputCount, TxConstituent,
+            HasSequence, InputCount, OutputCount, TxConstituent,
         },
         graph_index::IndexedGraph,
     },
@@ -167,6 +167,10 @@ impl<'a> EnumerateOutputValueInArbitraryOrder for TxHandle<'a> {
 }
 
 impl<'a> AbstractTransaction for TxHandle<'a> {
+    fn input_len(&self) -> usize {
+        self.index.tx_in_ids(&self.tx_id).len()
+    }
+
     fn inputs(&self) -> Box<dyn Iterator<Item = Box<dyn AbstractTxIn + '_>> + '_> {
         let input_ids = self.index.tx_in_ids(&self.tx_id);
         let inputs: Vec<_> = input_ids
@@ -261,6 +265,12 @@ impl<'a> EnumerateInputValueInArbitraryOrder for TxHandle<'a> {
 impl<'a> OutputCount for TxHandle<'a> {
     fn output_count(&self) -> usize {
         self.output_len()
+    }
+}
+
+impl<'a> InputCount for TxHandle<'a> {
+    fn input_count(&self) -> usize {
+        self.input_len()
     }
 }
 
