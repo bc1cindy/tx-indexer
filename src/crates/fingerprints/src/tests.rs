@@ -8,6 +8,7 @@ use crate::fingerprints::output::output_type;
 use crate::fingerprints::transaction::{
     address_reuse, anti_fee_snipe, input_order, mixed_input_types, output_structure, tx_signals_rbf,
 };
+use crate::transaction::round_fee;
 use crate::types::{InputSortingType, OutputStructureType, OutputType};
 
 fn get_tx_from_hex(hex_str: &str) -> Transaction {
@@ -512,4 +513,30 @@ fn test_electrum_tx_fingerprints() {
     let structure = output_structure(&tx.output);
     assert!(structure.contains(&OutputStructureType::Double));
     assert!(structure.contains(&OutputStructureType::Bip69));
+}
+
+#[test]
+fn test_round_fee_exact_thousand() {
+    // Fee = 10000 - 9000 = 1000 sats
+    let prevouts = [make_txout_with_value(10000)];
+    let outputs = [make_txout_with_value(9000)];
+    assert_eq!(round_fee(&prevouts, &outputs), Some(true));
+
+    // Fee = 10000 - 9743 = 257 sats
+    let prevouts = [make_txout_with_value(10000)];
+    let outputs = [make_txout_with_value(9743)];
+    assert_eq!(round_fee(&prevouts, &outputs), Some(false));
+
+    // Fee = 0 sats
+    let prevouts = [make_txout_with_value(10000)];
+    let outputs = [make_txout_with_value(10000)];
+    assert_eq!(round_fee(&prevouts, &outputs), Some(false));
+}
+
+#[test]
+fn test_round_fee_overflow() {
+    // Output > input, invalid, returns None
+    let prevouts = [make_txout_with_value(1000)];
+    let outputs = [make_txout_with_value(2000)];
+    assert_eq!(round_fee(&prevouts, &outputs), None);
 }

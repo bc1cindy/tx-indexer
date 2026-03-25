@@ -156,3 +156,18 @@ where
 
     structure
 }
+
+/// Returns true if the transaction fee appears to be a round number,
+/// suggesting manual fee entry rather than automatic fee estimation.
+///
+/// Checks whether the fee (in satoshis) is divisible by 1000.
+/// Round satoshi values are common with manual entry,
+/// while automatic fee estimation produces non-round amounts.
+///
+/// Returns `None` if the fee cannot be computed (e.g. input sum < output sum).
+pub fn round_fee(input_values: &[impl HasValue], outputs: &[impl HasValue]) -> Option<bool> {
+    let input_sum: u64 = input_values.iter().map(|v| v.value().to_sat()).sum();
+    let output_sum: u64 = outputs.iter().map(|v| v.value().to_sat()).sum();
+    let fee = input_sum.checked_sub(output_sum)?;
+    Some(fee > 0 && fee % 1000 == 0)
+}

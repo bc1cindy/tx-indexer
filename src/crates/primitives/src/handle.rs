@@ -3,8 +3,8 @@ use crate::{
     traits::{
         abstract_types::{
             AbstractTransaction, AbstractTxIn, AbstractTxOut, EnumerateInputValueInArbitraryOrder,
-            EnumerateOutputValueInArbitraryOrder, EnumerateSpentTxOuts, HasNLockTime, HasScriptPubkey,
-            HasSequence, InputCount, OutputCount, TxConstituent,
+            EnumerateOutputValueInArbitraryOrder, EnumerateSpentTxOuts, HasNLockTime,
+            HasScriptPubkey, HasSequence, InputCount, OutputCount, TxConstituent,
         },
         graph_index::IndexedGraph,
     },
