@@ -59,6 +59,7 @@ pub struct DummyTxOutData {
     value: u64,
     spk_hash: ScriptPubkeyHash,
     vout: u32,
+    script_pubkey: Vec<u8>,
 }
 
 impl DummyTxOutData {
@@ -67,6 +68,7 @@ impl DummyTxOutData {
             value,
             spk_hash,
             vout,
+            script_pubkey: vec![],
         }
     }
 
@@ -76,6 +78,17 @@ impl DummyTxOutData {
             value: amount,
             spk_hash: [0u8; 20],
             vout,
+            script_pubkey: vec![],
+        }
+    }
+
+    /// Create a new DummyTxOutData with explicit script pubkey bytes
+    pub fn new_with_script(amount: u64, vout: u32, script_pubkey: Vec<u8>) -> Self {
+        Self {
+            value: amount,
+            spk_hash: [0u8; 20],
+            vout,
+            script_pubkey,
         }
     }
 }
@@ -90,8 +103,7 @@ impl AbstractTxOut for DummyTxOutData {
     }
 
     fn script_pubkey_bytes(&self) -> Vec<u8> {
-        // TODO: enrich with real script bytes
-        vec![]
+        self.script_pubkey.clone()
     }
 }
 
