@@ -102,15 +102,18 @@ impl<'a> TxOutHandle<'a> {
             })
     }
 
-    // TODO: seperate methods
-    fn output_data(&self) -> (bitcoin::Amount, crate::ScriptPubkeyHash) {
-        self.index.tx_out_data(&self.out_id)
+    pub fn value(&self) -> bitcoin::Amount {
+        self.index.value(&self.out_id)
+    }
+
+    pub fn script_pubkey_hash(&self) -> crate::ScriptPubkeyHash {
+        self.index.script_pubkey_hash(&self.out_id)
     }
 }
 
 impl<'a> HasScriptPubkey for TxOutHandle<'a> {
     fn script_pubkey_bytes(&self) -> Vec<u8> {
-        self.index.tx_out_spk_bytes(&self.out_id)
+        self.index.script_pubkey_bytes(&self.out_id)
     }
 }
 
@@ -246,13 +249,11 @@ impl<'a> AbstractTxIn for TxInHandle<'a> {
 
 impl<'a> AbstractTxOut for TxOutHandle<'a> {
     fn value(&self) -> bitcoin::Amount {
-        let (value, _spk_hash) = self.output_data();
-        value
+        TxOutHandle::value(self)
     }
 
     fn script_pubkey_hash(&self) -> crate::ScriptPubkeyHash {
-        let (_value, spk_hash) = self.output_data();
-        spk_hash
+        TxOutHandle::script_pubkey_hash(self)
     }
 
     fn script_pubkey_bytes(&self) -> Vec<u8> {

@@ -42,8 +42,9 @@ pub trait OutpointIndex {
 }
 
 pub trait TxOutDataIndex {
-    fn tx_out_data(&self, out_id: &AnyOutId) -> (Amount, ScriptPubkeyHash);
-    fn tx_out_spk_bytes(&self, out_id: &AnyOutId) -> Vec<u8>;
+    fn value(&self, out_id: &AnyOutId) -> Amount;
+    fn script_pubkey_hash(&self, out_id: &AnyOutId) -> ScriptPubkeyHash;
+    fn script_pubkey_bytes(&self, out_id: &AnyOutId) -> Vec<u8>;
 }
 
 pub trait IndexedGraph:
