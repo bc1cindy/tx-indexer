@@ -12,10 +12,7 @@ use tx_indexer_pipeline::{
     node::{Node, NodeId},
     value::{TxMask, TxOutSet, TxSet},
 };
-use tx_indexer_primitives::{
-    AbstractTxOut,
-    unified::{AnyOutId, AnyTxId},
-};
+use tx_indexer_primitives::unified::{AnyOutId, AnyTxId};
 
 use crate::uih::UnnecessaryInputHeuristic;
 

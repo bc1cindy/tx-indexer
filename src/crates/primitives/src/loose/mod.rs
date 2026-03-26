@@ -6,6 +6,7 @@ use crate::traits::graph_index::{
 use crate::{
     AnyInId, AnyOutId, AnyTxId, ScriptPubkeyHash, traits::abstract_types::AbstractTransaction,
 };
+use bitcoin::Amount;
 
 use std::{
     collections::HashMap,
@@ -307,7 +308,7 @@ impl OutpointIndex for InMemoryIndex {
 }
 
 impl TxOutDataIndex for InMemoryIndex {
-    fn tx_out_data(&self, out_id: &AnyOutId) -> (bitcoin::Amount, ScriptPubkeyHash) {
+    fn value(&self, out_id: &AnyOutId) -> Amount {
         let loose_out = out_id
             .loose_id()
             .expect("loose storage only supports loose outids");
@@ -318,10 +319,24 @@ impl TxOutDataIndex for InMemoryIndex {
         let output = tx
             .output_at(loose_out.vout() as usize)
             .expect("txout should be present if index is built correctly");
-        (output.value(), output.script_pubkey_hash())
+        output.value()
     }
 
-    fn tx_out_spk_bytes(&self, out_id: &AnyOutId) -> Vec<u8> {
+    fn script_pubkey_hash(&self, out_id: &AnyOutId) -> ScriptPubkeyHash {
+        let loose_out = out_id
+            .loose_id()
+            .expect("loose storage only supports loose outids");
+        let tx = self
+            .txs
+            .get(&loose_out.txid())
+            .expect("loose txid not found in storage");
+        let output = tx
+            .output_at(loose_out.vout() as usize)
+            .expect("txout should be present if index is built correctly");
+        output.script_pubkey_hash()
+    }
+
+    fn script_pubkey_bytes(&self, out_id: &AnyOutId) -> Vec<u8> {
         let loose_out = out_id
             .loose_id()
             .expect("loose storage only supports loose outids");

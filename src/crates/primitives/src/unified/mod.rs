@@ -8,6 +8,7 @@ use crate::traits::graph_index::{
 };
 use crate::{ScriptPubkeyHash, dense, loose, traits::abstract_types::AbstractTransaction};
 use crate::{dense::build_indices, loose::LooseIndexBuilder, sled::spk_db::SledScriptPubkeyDb};
+use bitcoin::Amount;
 use std::{ops::Range, path::PathBuf};
 
 #[repr(transparent)]
@@ -590,7 +591,7 @@ impl OutpointIndex for UnifiedStorage {
 }
 
 impl TxOutDataIndex for UnifiedStorage {
-    fn tx_out_data(&self, out_id: &AnyOutId) -> (bitcoin::Amount, ScriptPubkeyHash) {
+    fn value(&self, out_id: &AnyOutId) -> Amount {
         if let Some(loose_outid) = out_id.loose_id() {
             let loose = self
                 .loose
@@ -603,7 +604,7 @@ impl TxOutDataIndex for UnifiedStorage {
             let output = tx
                 .output_at(loose_outid.vout() as usize)
                 .expect("txout should be present if index is built correctly");
-            return (output.value(), output.script_pubkey_hash());
+            return output.value();
         }
 
         let dense_outid = out_id
@@ -614,11 +615,37 @@ impl TxOutDataIndex for UnifiedStorage {
             .as_ref()
             .expect("dense storage missing for confirmed outid");
         let txout = dense.get_txout(dense_outid);
-        let spk_hash = script_pubkey_hash(&txout.script_pubkey);
-        (txout.value, spk_hash)
+        txout.value
     }
 
-    fn tx_out_spk_bytes(&self, out_id: &AnyOutId) -> Vec<u8> {
+    fn script_pubkey_hash(&self, out_id: &AnyOutId) -> ScriptPubkeyHash {
+        if let Some(loose_outid) = out_id.loose_id() {
+            let loose = self
+                .loose
+                .as_ref()
+                .expect("loose storage missing for loose outid");
+            let tx = loose
+                .txs
+                .get(&loose_outid.txid())
+                .expect("loose txid not found in storage");
+            let output = tx
+                .output_at(loose_outid.vout() as usize)
+                .expect("txout should be present if index is built correctly");
+            return output.script_pubkey_hash();
+        }
+
+        let dense_outid = out_id
+            .confirmed_id()
+            .expect("confirmed outid must map to dense outid");
+        let dense = self
+            .dense
+            .as_ref()
+            .expect("dense storage missing for confirmed outid");
+        let txout = dense.get_txout(dense_outid);
+        script_pubkey_hash(&txout.script_pubkey)
+    }
+
+    fn script_pubkey_bytes(&self, out_id: &AnyOutId) -> Vec<u8> {
         if let Some(loose_outid) = out_id.loose_id() {
             let loose = self
                 .loose
