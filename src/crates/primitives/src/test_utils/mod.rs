@@ -14,10 +14,10 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DummyTxData {
-    pub outputs: Vec<DummyTxOutData>,
+    outputs: Vec<DummyTxOutData>,
     /// The outputs that are spent by this transaction
-    pub spent_coins: Vec<TxOutId>,
-    pub n_locktime: u32,
+    spent_coins: Vec<TxOutId>,
+    n_locktime: u32,
 }
 
 impl DummyTxData {
@@ -27,6 +27,18 @@ impl DummyTxData {
             spent_coins,
             n_locktime,
         }
+    }
+
+    pub fn new_with_outputs(outputs: Vec<DummyTxOutData>) -> Self {
+        Self {
+            outputs,
+            spent_coins: vec![],
+            n_locktime: 0,
+        }
+    }
+
+    pub fn spent_coins(&self) -> &[TxOutId] {
+        &self.spent_coins
     }
 }
 

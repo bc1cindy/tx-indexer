@@ -52,11 +52,9 @@ mod tests {
     fn test_classify_change() {
         let txout = DummyTxOut {
             vout: 0,
-            containing_tx: DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(100, 0)],
-                spent_coins: vec![],
-                n_locktime: 0,
-            },
+            containing_tx: DummyTxData::new_with_outputs(vec![DummyTxOutData::new_with_amount(
+                100, 0,
+            )]),
         };
         assert_eq!(
             NaiveChangeIdentificationHueristic::is_change(txout),
@@ -68,17 +66,12 @@ mod tests {
     fn test_n_locktime_change_identification() {
         let tx_out = DummyTxOut {
             vout: 0,
-            containing_tx: DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(100, 0)],
-                spent_coins: vec![],
-                n_locktime: 0,
-            },
+            containing_tx: DummyTxData::new_with_outputs(vec![DummyTxOutData::new_with_amount(
+                100, 0,
+            )]),
         };
-        let spending_tx = DummyTxData {
-            outputs: vec![DummyTxOutData::new_with_amount(100, 0)],
-            spent_coins: vec![],
-            n_locktime: 0,
-        };
+        let spending_tx =
+            DummyTxData::new_with_outputs(vec![DummyTxOutData::new_with_amount(100, 0)]);
         assert_eq!(
             NLockTimeChangeIdentification::is_change(tx_out, spending_tx),
             TxOutChangeAnnotation::NotChange
@@ -87,17 +80,14 @@ mod tests {
         // Same lock time
         let tx_out = DummyTxOut {
             vout: 0,
-            containing_tx: DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(100, 0)],
-                spent_coins: vec![],
-                n_locktime: 1,
-            },
+            containing_tx: DummyTxData::new(
+                vec![DummyTxOutData::new_with_amount(100, 0)],
+                vec![],
+                1,
+            ),
         };
-        let spending_tx = DummyTxData {
-            outputs: vec![DummyTxOutData::new_with_amount(100, 0)],
-            spent_coins: vec![],
-            n_locktime: 1,
-        };
+        let spending_tx =
+            DummyTxData::new(vec![DummyTxOutData::new_with_amount(100, 0)], vec![], 1);
         assert_eq!(
             NLockTimeChangeIdentification::is_change(tx_out, spending_tx),
             TxOutChangeAnnotation::Change

@@ -83,38 +83,38 @@ mod tests {
         let unique_spk2 = [2u8; 20];
 
         // Coinbase 1
-        let coinbase1 = DummyTxData {
-            outputs: vec![DummyTxOutData::new_with_script(10_000, 0, unique_spk1)],
-            spent_coins: vec![],
-            n_locktime: 0,
-        };
+        let coinbase1 = DummyTxData::new_with_outputs(vec![DummyTxOutData::new_with_script(
+            10_000,
+            0,
+            unique_spk1,
+        )]);
 
         // Coinbase 2
-        let coinbase2 = DummyTxData {
-            outputs: vec![DummyTxOutData::new_with_script(10_000, 0, unique_spk2)],
-            spent_coins: vec![],
-            n_locktime: 0,
-        };
+        let coinbase2 = DummyTxData::new_with_outputs(vec![DummyTxOutData::new_with_script(
+            10_000,
+            0,
+            unique_spk2,
+        )]);
 
         // Spend coinbase 1, make payment + change (change spk is shared)
-        let spend1 = DummyTxData {
-            spent_coins: vec![TxOutId::new(TxId(1), 0)],
-            outputs: vec![
+        let spend1 = DummyTxData::new(
+            vec![
                 DummyTxOutData::new_with_script(4_000, 0, unique_spk1), // payment
                 DummyTxOutData::new_with_script(5_000, 1, shared_spk), // change (shared with spend2)
             ],
-            n_locktime: 0,
-        };
+            vec![TxOutId::new(TxId(1), 0)],
+            0,
+        );
 
         // Spend coinbase 2, make payment + change (change spk is shared)
-        let spend2 = DummyTxData {
-            spent_coins: vec![TxOutId::new(TxId(2), 0)],
-            outputs: vec![
+        let spend2 = DummyTxData::new(
+            vec![
                 DummyTxOutData::new_with_script(4_000, 0, unique_spk2), // payment
                 DummyTxOutData::new_with_script(5_000, 1, shared_spk), // change (shared with spend1)
             ],
-            n_locktime: 0,
-        };
+            vec![TxOutId::new(TxId(2), 0)],
+            0,
+        );
 
         vec![
             Arc::new(coinbase1),

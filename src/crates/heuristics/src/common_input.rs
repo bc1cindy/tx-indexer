@@ -30,18 +30,18 @@ mod tests {
 
     #[test]
     fn test_multi_input_heuristic_merge_prevouts() {
-        let tx = DummyTxData {
-            outputs: vec![
+        let tx = DummyTxData::new(
+            vec![
                 DummyTxOutData::new_with_amount(500, 0),
                 DummyTxOutData::new_with_amount(300, 1),
             ],
-            spent_coins: vec![
+            vec![
                 TxOutId::new(TxId(2), 0),
                 TxOutId::new(TxId(3), 1),
                 TxOutId::new(TxId(4), 0),
             ],
-            n_locktime: 0,
-        };
+            0,
+        );
 
         let cluster = MultiInputHeuristic::merge_prevouts(&tx);
 
