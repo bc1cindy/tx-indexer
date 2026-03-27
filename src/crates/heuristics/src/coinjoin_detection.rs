@@ -37,9 +37,9 @@ mod tests {
     fn test_is_coinjoin_tx() {
         let not_coinjoin = DummyTxData {
             outputs: vec![
-                DummyTxOutData::new_with_amount(100, 0),
-                DummyTxOutData::new_with_amount(200, 1),
-                DummyTxOutData::new_with_amount(300, 2),
+                DummyTxOutData::new(100, 0),
+                DummyTxOutData::new(200, 1),
+                DummyTxOutData::new(300, 2),
             ],
             spent_coins: vec![],
             n_locktime: 0,
@@ -48,15 +48,15 @@ mod tests {
 
         let coinjoin = DummyTxData {
             outputs: vec![
-                DummyTxOutData::new_with_amount(100, 0),
-                DummyTxOutData::new_with_amount(100, 1),
-                DummyTxOutData::new_with_amount(100, 2),
-                DummyTxOutData::new_with_amount(200, 3),
-                DummyTxOutData::new_with_amount(200, 4),
-                DummyTxOutData::new_with_amount(200, 5),
-                DummyTxOutData::new_with_amount(300, 6),
-                DummyTxOutData::new_with_amount(300, 7),
-                DummyTxOutData::new_with_amount(300, 8),
+                DummyTxOutData::new(100, 0),
+                DummyTxOutData::new(100, 1),
+                DummyTxOutData::new(100, 2),
+                DummyTxOutData::new(200, 3),
+                DummyTxOutData::new(200, 4),
+                DummyTxOutData::new(200, 5),
+                DummyTxOutData::new(300, 6),
+                DummyTxOutData::new(300, 7),
+                DummyTxOutData::new(300, 8),
             ],
             spent_coins: vec![],
             n_locktime: 0,

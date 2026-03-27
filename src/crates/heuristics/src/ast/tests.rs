@@ -26,9 +26,9 @@ pub(crate) mod tests {
             DummyTxData {
                 outputs: vec![
                     // Payment output
-                    DummyTxOutData::new_with_amount(100, 0),
+                    DummyTxOutData::new(100, 0),
                     // Change output
-                    DummyTxOutData::new_with_amount(150, 1),
+                    DummyTxOutData::new(150, 1),
                 ],
                 spent_coins: vec![TxOutId::new(TxId(1), 0), TxOutId::new(TxId(2), 0)],
                 n_locktime: 0,
@@ -37,10 +37,7 @@ pub(crate) mod tests {
 
         pub fn coinbase1() -> DummyTxData {
             DummyTxData {
-                outputs: vec![
-                    DummyTxOutData::new_with_amount(100, 0),
-                    DummyTxOutData::new_with_amount(150, 1),
-                ],
+                outputs: vec![DummyTxOutData::new(100, 0), DummyTxOutData::new(150, 1)],
                 spent_coins: vec![],
                 n_locktime: 0,
             }
@@ -48,7 +45,7 @@ pub(crate) mod tests {
 
         pub fn coinbase2() -> DummyTxData {
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(150, 0)],
+                outputs: vec![DummyTxOutData::new(150, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             }
@@ -65,10 +62,7 @@ pub(crate) mod tests {
         /// Single-input spending tx (spends coinbase2). Used for UIH2 single-input tests.
         pub fn single_input_spending_tx() -> DummyTxData {
             DummyTxData {
-                outputs: vec![
-                    DummyTxOutData::new_with_amount(200, 0),
-                    DummyTxOutData::new_with_amount(300, 1),
-                ],
+                outputs: vec![DummyTxOutData::new(200, 0), DummyTxOutData::new(300, 1)],
                 spent_coins: vec![TxOutId::new(TxId(2), 0)],
                 n_locktime: 0,
             }
@@ -102,10 +96,7 @@ pub(crate) mod tests {
     fn test_coinjoin_detection() {
         // Non-coinjoin tx
         let normal_tx = DummyTxData {
-            outputs: vec![
-                DummyTxOutData::new_with_amount(100, 0),
-                DummyTxOutData::new_with_amount(200, 1),
-            ],
+            outputs: vec![DummyTxOutData::new(100, 0), DummyTxOutData::new(200, 1)],
             spent_coins: vec![],
             n_locktime: 0,
         };
@@ -113,9 +104,9 @@ pub(crate) mod tests {
         // Coinjoin tx (3+ outputs with same value)
         let coinjoin_tx = DummyTxData {
             outputs: vec![
-                DummyTxOutData::new_with_amount(100, 0),
-                DummyTxOutData::new_with_amount(100, 1),
-                DummyTxOutData::new_with_amount(100, 2),
+                DummyTxOutData::new(100, 0),
+                DummyTxOutData::new(100, 1),
+                DummyTxOutData::new(100, 2),
             ],
             spent_coins: vec![],
             n_locktime: 0,
@@ -283,30 +274,30 @@ pub(crate) mod tests {
         let txs = vec![
             // Coinbase 0
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(1000, 0)],
+                outputs: vec![DummyTxOutData::new(1000, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             },
             // tx1: spends coinbase 0, produces payment + change
             DummyTxData {
                 outputs: vec![
-                    DummyTxOutData::new_with_amount(700, 0), // payment
-                    DummyTxOutData::new_with_amount(300, 1), // change
+                    DummyTxOutData::new(700, 0), // payment
+                    DummyTxOutData::new(300, 1), // change
                 ],
                 spent_coins: vec![TxOutId::new(TxId(1), 0)],
                 n_locktime: 0,
             },
             // coinbase 2
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(500, 0)],
+                outputs: vec![DummyTxOutData::new(500, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             },
             // tx3: spends tx1 change + coinbase2
             DummyTxData {
                 outputs: vec![
-                    DummyTxOutData::new_with_amount(400, 0), // payment
-                    DummyTxOutData::new_with_amount(100, 1), // change
+                    DummyTxOutData::new(400, 0), // payment
+                    DummyTxOutData::new(100, 1), // change
                 ],
                 spent_coins: vec![
                     TxOutId::new(TxId(2), 1), // spends tx1 change
@@ -349,25 +340,25 @@ pub(crate) mod tests {
 
         let txs = vec![
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(1000, 0)],
+                outputs: vec![DummyTxOutData::new(1000, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             },
             DummyTxData {
                 outputs: vec![
-                    DummyTxOutData::new_with_amount(700, 0), // payment
-                    DummyTxOutData::new_with_amount(300, 1), // change
+                    DummyTxOutData::new(700, 0), // payment
+                    DummyTxOutData::new(300, 1), // change
                 ],
                 spent_coins: vec![TxOutId::new(TxId(1), 0)],
                 n_locktime: 0,
             },
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(300, 0)],
+                outputs: vec![DummyTxOutData::new(300, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             },
             DummyTxData {
-                outputs: vec![DummyTxOutData::new_with_amount(700, 0)],
+                outputs: vec![DummyTxOutData::new(700, 0)],
                 spent_coins: vec![],
                 n_locktime: 0,
             },

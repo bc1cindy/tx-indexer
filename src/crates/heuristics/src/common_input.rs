@@ -31,10 +31,7 @@ mod tests {
     #[test]
     fn test_multi_input_heuristic_merge_prevouts() {
         let tx = DummyTxData {
-            outputs: vec![
-                DummyTxOutData::new_with_amount(500, 0),
-                DummyTxOutData::new_with_amount(300, 1),
-            ],
+            outputs: vec![DummyTxOutData::new(500, 0), DummyTxOutData::new(300, 1)],
             spent_coins: vec![
                 TxOutId::new(TxId(2), 0),
                 TxOutId::new(TxId(3), 1),

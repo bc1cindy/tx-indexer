@@ -64,16 +64,8 @@ pub struct DummyTxOutData {
 }
 
 impl DummyTxOutData {
-    pub fn new(value: u64, vout: u32) -> Self {
-        Self {
-            value,
-            vout,
-            script_pubkey: vec![],
-        }
-    }
-
     /// Create a new DummyTxOutData with a given amount and a dummy script pubkey
-    pub fn new_with_amount(amount: u64, vout: u32) -> Self {
+    pub fn new(amount: u64, vout: u32) -> Self {
         Self {
             value: amount,
             vout,
