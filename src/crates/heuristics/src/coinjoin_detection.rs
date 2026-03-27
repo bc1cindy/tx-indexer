@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use tx_indexer_primitives::traits::HasNLockTime;
 use tx_indexer_primitives::traits::abstract_types::EnumerateOutputValueInArbitraryOrder;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,6 +24,21 @@ impl NaiveCoinjoinDetection {
         }
 
         counts.values().any(|&count| count >= 3)
+    }
+}
+
+#[derive(Debug)]
+pub struct JoinMarketDetection;
+
+impl JoinMarketDetection {
+    /// Block height locktime. JoinMarket enforces `locktime > 0` (P2EP requirement).
+    pub fn without_fidelity_bond(tx: &impl HasNLockTime) -> bool {
+        tx.locktime() >= 1 && tx.locktime() <= 499_999_999
+    }
+
+    /// Unix timestamp locktime, defined by Bitcoin protocol >= 500_000_000.
+    pub fn with_fidelity_bond(tx: &impl HasNLockTime) -> bool {
+        tx.locktime() >= 500_000_000
     }
 }
 
@@ -62,5 +78,53 @@ mod tests {
             n_locktime: 0,
         };
         assert!(NaiveCoinjoinDetection::is_coinjoin(&coinjoin));
+    }
+
+    #[test]
+    fn test_without_fidelity_bond() {
+        let tx = DummyTxData::new(
+            vec![DummyTxOutData::new_with_amount(100, 0)],
+            vec![],
+            800_000, // block height.
+        );
+        assert!(JoinMarketDetection::without_fidelity_bond(&tx));
+        assert!(!JoinMarketDetection::with_fidelity_bond(&tx));
+    }
+
+    #[test]
+    fn test_with_fidelity_bond() {
+        let tx = DummyTxData::new(
+            vec![DummyTxOutData::new_with_amount(100, 0)],
+            vec![],
+            1_700_000_000, // unix timestamp.
+        );
+        assert!(JoinMarketDetection::with_fidelity_bond(&tx));
+        assert!(!JoinMarketDetection::without_fidelity_bond(&tx));
+    }
+    #[test]
+    fn test_locktime_boundary() {
+        let tx_max_height = DummyTxData::new(
+            vec![DummyTxOutData::new_with_amount(100, 0)],
+            vec![],
+            499_999_999, // last valid block height.
+        );
+        assert!(JoinMarketDetection::without_fidelity_bond(&tx_max_height));
+        assert!(!JoinMarketDetection::with_fidelity_bond(&tx_max_height));
+
+        let tx_min_timestamp = DummyTxData::new(
+            vec![DummyTxOutData::new_with_amount(100, 0)],
+            vec![],
+            500_000_000, // first valid unix timestamp.
+        );
+        assert!(JoinMarketDetection::with_fidelity_bond(&tx_min_timestamp));
+        assert!(!JoinMarketDetection::without_fidelity_bond(
+            &tx_min_timestamp
+        ));
+    }
+    #[test]
+    fn test_locktime_zero() {
+        let tx = DummyTxData::new(vec![DummyTxOutData::new_with_amount(100, 0)], vec![], 0);
+        assert!(!JoinMarketDetection::without_fidelity_bond(&tx));
+        assert!(!JoinMarketDetection::with_fidelity_bond(&tx));
     }
 }
