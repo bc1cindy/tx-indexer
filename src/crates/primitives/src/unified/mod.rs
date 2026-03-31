@@ -223,6 +223,75 @@ impl UnifiedStorage {
         self
     }
 
+    #[inline(always)]
+    fn loose(&self) -> &InMemoryIndex {
+        self.loose.as_ref().expect("loose storage not initialized")
+    }
+
+    #[inline(always)]
+    fn dense(&self) -> &DenseStorage {
+        self.dense.as_ref().expect("dense storage not initialized")
+    }
+
+    #[inline]
+    fn resolve_tx<T>(
+        &self,
+        id: AnyTxId,
+        loose_fn: impl FnOnce(&InMemoryIndex, loose::TxId) -> T,
+        dense_fn: impl FnOnce(&DenseStorage, dense::TxId) -> T,
+    ) -> T {
+        if let Some(lid) = id.loose_txid() {
+            loose_fn(self.loose(), lid)
+        } else {
+            dense_fn(
+                self.dense(),
+                id.confirmed_txid().expect("must be dense or loose"),
+            )
+        }
+    }
+
+    #[inline]
+    fn resolve_out<T>(
+        &self,
+        id: AnyOutId,
+        loose_fn: impl FnOnce(&InMemoryIndex, loose::TxOutId) -> T,
+        dense_fn: impl FnOnce(&DenseStorage, dense::TxOutId) -> T,
+    ) -> T {
+        if let Some(lid) = id.loose_id() {
+            loose_fn(self.loose(), lid)
+        } else {
+            dense_fn(
+                self.dense(),
+                id.confirmed_id().expect("must be dense or loose"),
+            )
+        }
+    }
+
+    #[inline]
+    fn resolve_in<T>(
+        &self,
+        id: AnyInId,
+        loose_fn: impl FnOnce(&InMemoryIndex, loose::TxInId) -> T,
+        dense_fn: impl FnOnce(&DenseStorage, dense::TxInId) -> T,
+    ) -> T {
+        if let Some(lid) = id.loose_id() {
+            loose_fn(self.loose(), lid)
+        } else {
+            dense_fn(
+                self.dense(),
+                id.confirmed_id().expect("must be dense or loose"),
+            )
+        }
+    }
+
+    #[inline]
+    fn loose_tx(&self, id: loose::TxId) -> &std::sync::Arc<dyn AbstractTransaction + Send + Sync> {
+        self.loose()
+            .txs
+            .get(&id)
+            .expect("loose txid not found in storage")
+    }
+
     pub fn loose_txids(&self) -> Vec<AnyTxId> {
         let loose = self
             .loose
@@ -271,137 +340,76 @@ impl UnifiedStorage {
     }
 
     pub fn tx_out_ids(&self, txid: AnyTxId) -> Vec<AnyOutId> {
-        if let Some(loose_txid) = txid.loose_txid() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose txid");
-            let tx = loose
-                .txs
-                .get(&loose_txid)
-                .expect("loose txid not found in storage");
-            let output_len = tx.output_len();
-            return (0..output_len)
-                .map(|vout| AnyOutId::from(loose::TxOutId::new(loose_txid, vout as u32)))
-                .collect();
-        }
-
-        let dense_txid = txid
-            .confirmed_txid()
-            .expect("confirmed txid must map to dense txid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed txid");
-        dense
-            .get_txout_ids(dense_txid)
-            .into_iter()
-            .map(AnyOutId::from)
-            .collect()
+        self.resolve_tx(
+            txid,
+            |ls, lid| {
+                let output_len = ls.txs[&lid].output_len();
+                (0..output_len)
+                    .map(|vout| AnyOutId::from(loose::TxOutId::new(lid, vout as u32)))
+                    .collect()
+            },
+            |ds, did| {
+                ds.get_txout_ids(did)
+                    .into_iter()
+                    .map(AnyOutId::from)
+                    .collect()
+            },
+        )
     }
 
     pub fn txid_for_out(&self, out_id: AnyOutId) -> AnyTxId {
-        if let Some(loose_outid) = out_id.loose_id() {
-            return AnyTxId::from(loose_outid.txid());
-        }
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        AnyTxId::from(dense.txid_for_out(dense_outid))
+        self.resolve_out(
+            out_id,
+            |_, lid| AnyTxId::from(lid.txid()),
+            |ds, did| AnyTxId::from(ds.txid_for_out(did)),
+        )
     }
 
     pub fn txid_for_in(&self, in_id: AnyInId) -> AnyTxId {
-        if let Some(loose_inid) = in_id.loose_id() {
-            return AnyTxId::from(loose_inid.txid());
-        }
-        let dense_inid = in_id
-            .confirmed_id()
-            .expect("confirmed inid must map to dense inid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed inid");
-        AnyTxId::from(dense.txid_for_in(dense_inid))
+        self.resolve_in(
+            in_id,
+            |_, lid| AnyTxId::from(lid.txid()),
+            |ds, did| AnyTxId::from(ds.txid_for_in(did)),
+        )
     }
 
     pub fn spender_for_out(&self, out_id: AnyOutId) -> Option<AnyInId> {
-        if let Some(loose_outid) = out_id.loose_id() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose outid");
-            return loose
-                .spending_txins
-                .get(&loose_outid)
-                .copied()
-                .map(AnyInId::from);
-        }
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        dense.spender_for_out(dense_outid).map(AnyInId::from)
+        self.resolve_out(
+            out_id,
+            |ls, lid| ls.spending_txins.get(&lid).copied().map(AnyInId::from),
+            |ds, did| ds.spender_for_out(did).map(AnyInId::from),
+        )
     }
 
     pub fn tx(&self, txid: AnyTxId) -> std::sync::Arc<dyn AbstractTransaction> {
         if let Some(loose_txid) = txid.loose_txid() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose txid");
-            return loose
-                .txs
-                .get(&loose_txid)
-                .cloned()
-                .expect("loose txid not found in storage");
+            return self.loose_tx(loose_txid).clone();
         }
         // TODO: support confirmed tx access
         panic!("confirmed tx access not supported yet");
     }
 
     pub fn script_pubkey_to_txout_id(&self, script_pubkey: &ScriptPubkeyHash) -> Option<AnyOutId> {
-        if let Some(loose) = self.loose.as_ref()
-            && let Some(out_id) = loose.spk_to_txout_ids.get(script_pubkey).copied()
+        if let Some(ls) = self.loose.as_ref()
+            && let Some(id) = ls.spk_to_txout_ids.get(script_pubkey).copied()
         {
-            return Some(AnyOutId::from(out_id));
+            return Some(AnyOutId::from(id));
         }
-
-        if let Some(dense) = self.dense.as_ref() {
-            // TODO: handle error
-            return dense
-                .script_pubkey_to_txout_id(script_pubkey)
-                .unwrap_or(None)
-                .map(AnyOutId::from);
-        }
-        None
+        self.dense
+            .as_ref()?
+            .script_pubkey_to_txout_id(script_pubkey)
+            .unwrap_or(None)
+            .map(AnyOutId::from)
     }
 }
 
 impl PrevOutIndex for UnifiedStorage {
     fn prev_txout(&self, id: &AnyInId) -> Option<AnyOutId> {
-        if let Some(loose_inid) = id.loose_id() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose txin id");
-            let out_id = loose.prev_txouts.get(&loose_inid).copied();
-            return out_id.map(AnyOutId::from);
-        }
-        let dense_inid = id
-            .confirmed_id()
-            .expect("confirmed inid must map to dense inid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed txin id");
-        dense.prevout_for_in(dense_inid).map(AnyOutId::from)
+        self.resolve_in(
+            *id,
+            |ls, lid| ls.prev_txouts.get(&lid).copied().map(AnyOutId::from),
+            |ds, did| ds.prevout_for_in(did).map(AnyOutId::from),
+        )
     }
 }
 
@@ -432,33 +440,21 @@ impl TxIndex for UnifiedStorage {
 
 impl TxIoIndex for UnifiedStorage {
     fn tx_in_ids(&self, txid: &AnyTxId) -> Vec<AnyInId> {
-        if let Some(loose_txid) = txid.loose_txid() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose txid");
-            let tx = loose
-                .txs
-                .get(&loose_txid)
-                .expect("loose txid not found in storage");
-            let input_len = tx.input_len();
-            return (0..input_len)
-                .map(|vin| AnyInId::from(loose::TxInId::new(loose_txid, vin as u32)))
-                .collect();
-        }
-
-        let dense_txid = txid
-            .confirmed_txid()
-            .expect("confirmed txid must map to dense txid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed txid");
-        dense
-            .get_txin_ids(dense_txid)
-            .into_iter()
-            .map(AnyInId::from)
-            .collect()
+        self.resolve_tx(
+            *txid,
+            |ls, lid| {
+                let input_len = ls.txs[&lid].input_len();
+                (0..input_len)
+                    .map(|vin| AnyInId::from(loose::TxInId::new(lid, vin as u32)))
+                    .collect()
+            },
+            |ds, did| {
+                ds.get_txin_ids(did)
+                    .into_iter()
+                    .map(AnyInId::from)
+                    .collect()
+            },
+        )
     }
 
     fn tx_out_ids(&self, txid: &AnyTxId) -> Vec<AnyOutId> {
@@ -466,26 +462,11 @@ impl TxIoIndex for UnifiedStorage {
     }
 
     fn locktime(&self, txid: &AnyTxId) -> u32 {
-        if let Some(loose_txid) = txid.loose_txid() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose txid");
-            return loose
-                .txs
-                .get(&loose_txid)
-                .expect("loose txid not found in storage")
-                .locktime();
-        }
-
-        let dense_txid = txid
-            .confirmed_txid()
-            .expect("confirmed txid must map to dense txid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed txid");
-        dense.get_tx(dense_txid).lock_time.to_consensus_u32()
+        self.resolve_tx(
+            *txid,
+            |ls, lid| ls.txs[&lid].locktime(),
+            |ds, did| ds.get_tx(did).lock_time.to_consensus_u32(),
+        )
     }
 
     fn input_sequence(&self, in_id: &AnyInId) -> u32 {
@@ -493,19 +474,12 @@ impl TxIoIndex for UnifiedStorage {
             // TODO: loose transactions don't carry sequence data in the abstract model yet.
             panic!("input_sequence not supported for loose transactions");
         }
-
-        let dense_inid = in_id
-            .confirmed_id()
-            .expect("confirmed inid must map to dense inid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed inid");
-        let txid = dense.txid_for_in(dense_inid);
-        let (start, _end) = dense.tx_in_range(txid);
-        let vin = (dense_inid.index() - start) as usize;
-        let tx = dense.get_tx(txid);
-        tx.input[vin].sequence.0
+        let did = in_id.confirmed_id().expect("must be dense");
+        let ds = self.dense();
+        let txid = ds.txid_for_in(did);
+        let (start, _) = ds.tx_in_range(txid);
+        let vin = (did.index() - start) as usize;
+        ds.get_tx(txid).input[vin].sequence.0
     }
 
     fn witness_items(&self, in_id: &AnyInId) -> Vec<Vec<u8>> {
@@ -513,18 +487,12 @@ impl TxIoIndex for UnifiedStorage {
             // TODO: loose transactions don't carry witness data in the abstract model yet.
             panic!("witness_items not supported for loose transactions");
         }
-
-        let dense_inid = in_id
-            .confirmed_id()
-            .expect("confirmed inid must map to dense inid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed inid");
-        let txid = dense.txid_for_in(dense_inid);
-        let (start, _end) = dense.tx_in_range(txid);
-        let vin = (dense_inid.index() - start) as usize;
-        let tx = dense.get_tx(txid);
+        let did = in_id.confirmed_id().expect("must be dense");
+        let ds = self.dense();
+        let txid = ds.txid_for_in(did);
+        let (start, _) = ds.tx_in_range(txid);
+        let vin = (did.index() - start) as usize;
+        let tx = ds.get_tx(txid);
         tx.input[vin]
             .witness
             .iter()
@@ -537,122 +505,68 @@ impl TxIoIndex for UnifiedStorage {
             // TODO: loose transactions don't carry script sig data in the abstract model yet.
             panic!("script_sig_bytes not supported for loose transactions");
         }
-
-        let dense_inid = in_id
-            .confirmed_id()
-            .expect("confirmed inid must map to dense inid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed inid");
-        let txid = dense.txid_for_in(dense_inid);
-        let (start, _end) = dense.tx_in_range(txid);
-        let vin = (dense_inid.index() - start) as usize;
-        let tx = dense.get_tx(txid);
-        tx.input[vin].script_sig.to_bytes()
+        let did = in_id.confirmed_id().expect("must be dense");
+        let ds = self.dense();
+        let txid = ds.txid_for_in(did);
+        let (start, _) = ds.tx_in_range(txid);
+        let vin = (did.index() - start) as usize;
+        ds.get_tx(txid).input[vin].script_sig.to_bytes()
     }
 }
 
 impl OutpointIndex for UnifiedStorage {
     fn outpoint_for_out(&self, out_id: &AnyOutId) -> (AnyTxId, u32) {
-        if let Some(loose_outid) = out_id.loose_id() {
-            return (AnyTxId::from(loose_outid.txid()), loose_outid.vout());
-        }
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        let dense_txid = dense.txid_for_out(dense_outid);
-        let (start, _end) = dense.tx_out_range(dense_txid);
-        let vout = dense_outid.index() - start;
-        let vout = u32::try_from(vout).expect("vout should fit in u32");
-        (AnyTxId::from(dense_txid), vout)
+        self.resolve_out(
+            *out_id,
+            |_, lid| (AnyTxId::from(lid.txid()), lid.vout()),
+            |ds, did| {
+                let txid = ds.txid_for_out(did);
+                let (start, _) = ds.tx_out_range(txid);
+                let vout = u32::try_from(did.index() - start).expect("vout should fit in u32");
+                (AnyTxId::from(txid), vout)
+            },
+        )
     }
 }
 
 impl TxOutDataIndex for UnifiedStorage {
     fn value(&self, out_id: &AnyOutId) -> Amount {
-        if let Some(loose_outid) = out_id.loose_id() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose outid");
-            let tx = loose
-                .txs
-                .get(&loose_outid.txid())
-                .expect("loose txid not found in storage");
-            let output = tx
-                .output_at(loose_outid.vout() as usize)
-                .expect("txout should be present if index is built correctly");
-            return output.value();
-        }
-
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        let txout = dense.get_txout(dense_outid);
-        txout.value
+        self.resolve_out(
+            *out_id,
+            |ls, lid| {
+                ls.txs[&lid.txid()]
+                    .output_at(lid.vout() as usize)
+                    .expect("txout should be present if index is built correctly")
+                    .value()
+            },
+            |ds, did| ds.get_txout(did).value,
+        )
     }
 
     fn script_pubkey_hash(&self, out_id: &AnyOutId) -> ScriptPubkeyHash {
-        if let Some(loose_outid) = out_id.loose_id() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose outid");
-            let tx = loose
-                .txs
-                .get(&loose_outid.txid())
-                .expect("loose txid not found in storage");
-            let output = tx
-                .output_at(loose_outid.vout() as usize)
-                .expect("txout should be present if index is built correctly");
-            return output.script_pubkey_hash();
-        }
-
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        let txout = dense.get_txout(dense_outid);
-        script_pubkey_hash(&txout.script_pubkey)
+        self.resolve_out(
+            *out_id,
+            |ls, lid| {
+                ls.txs[&lid.txid()]
+                    .output_at(lid.vout() as usize)
+                    .expect("txout should be present if index is built correctly")
+                    .script_pubkey_hash()
+            },
+            |ds, did| script_pubkey_hash(&ds.get_txout(did).script_pubkey),
+        )
     }
 
     fn script_pubkey_bytes(&self, out_id: &AnyOutId) -> Vec<u8> {
-        if let Some(loose_outid) = out_id.loose_id() {
-            let loose = self
-                .loose
-                .as_ref()
-                .expect("loose storage missing for loose outid");
-            let tx = loose
-                .txs
-                .get(&loose_outid.txid())
-                .expect("loose txid not found in storage");
-            let output = tx
-                .output_at(loose_outid.vout() as usize)
-                .expect("txout should be present if index is built correctly");
-            return output.script_pubkey_bytes();
-        }
-
-        let dense_outid = out_id
-            .confirmed_id()
-            .expect("confirmed outid must map to dense outid");
-        let dense = self
-            .dense
-            .as_ref()
-            .expect("dense storage missing for confirmed outid");
-        let txout = dense.get_txout(dense_outid);
-        txout.script_pubkey.to_bytes()
+        self.resolve_out(
+            *out_id,
+            |ls, lid| {
+                ls.txs[&lid.txid()]
+                    .output_at(lid.vout() as usize)
+                    .expect("txout should be present if index is built correctly")
+                    .script_pubkey_bytes()
+            },
+            |ds, did| ds.get_txout(did).script_pubkey.to_bytes(),
+        )
     }
 }
 
