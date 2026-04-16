@@ -1,13 +1,10 @@
 use bitcoin::Script;
 use bitcoin::script::Instruction;
-use tx_indexer_primitives::{HasScriptPubkey, HasWitnessData};
-
-use crate::classify::classify_script_pubkey;
-use crate::types::OutputType;
+use tx_indexer_primitives::{HasScriptPubkey, HasWitnessData, OutputType};
 
 /// Classify the input type by looking at its prevout's scriptPubKey.
 pub fn input_type(prevout: &impl HasScriptPubkey) -> OutputType {
-    classify_script_pubkey(&prevout.script_pubkey_bytes())
+    prevout.output_type()
 }
 
 /// Returns true if the input uses an uncompressed public key.

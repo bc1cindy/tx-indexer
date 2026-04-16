@@ -1,6 +1,7 @@
 use bitcoin::consensus::Decodable;
 use bitcoin::{Amount, OutPoint, PublicKey, ScriptBuf, Transaction, TxIn, TxOut};
 use std::str::FromStr;
+use tx_indexer_primitives::OutputType;
 
 use crate::fingerprints::input::{low_r_grinding, signals_rbf};
 use crate::fingerprints::input_with_prevout::{has_uncompressed_pubkey, input_type};
@@ -9,7 +10,7 @@ use crate::fingerprints::transaction::{
     address_reuse, anti_fee_snipe, input_order, mixed_input_types, output_structure, tx_signals_rbf,
 };
 use crate::transaction::round_fee;
-use crate::types::{InputSortingType, OutputStructureType, OutputType};
+use crate::types::{InputSortingType, OutputStructureType};
 
 fn get_tx_from_hex(hex_str: &str) -> Transaction {
     let bytes = hex::decode(hex_str).unwrap();

@@ -1,5 +1,5 @@
 use crate::{
-    AnyInId, AnyOutId, AnyTxId, HasWitnessData,
+    AnyInId, AnyOutId, AnyTxId, HasWitnessData, OutputType,
     traits::{
         abstract_types::{
             AbstractTransaction, AbstractTxIn, AbstractTxOut, EnumerateInputValueInArbitraryOrder,
@@ -149,6 +149,10 @@ impl<'a> TxInHandle<'a> {
             index: self.index,
         })
     }
+
+    pub fn output_type(&self) -> Option<OutputType> {
+        self.prev_txout().map(|prevout| prevout.output_type())
+    }
 }
 
 impl<'a> HasSequence for TxInHandle<'a> {
@@ -265,10 +269,6 @@ impl<'a> AbstractTxOut for TxOutHandle<'a> {
 
     fn script_pubkey_hash(&self) -> crate::ScriptPubkeyHash {
         TxOutHandle::script_pubkey_hash(self)
-    }
-
-    fn script_pubkey_bytes(&self) -> Vec<u8> {
-        HasScriptPubkey::script_pubkey_bytes(self)
     }
 }
 

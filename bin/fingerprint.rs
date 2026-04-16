@@ -1,9 +1,9 @@
 use bitcoin::Transaction;
 use bitcoin::consensus::Decodable;
 use serde_json::{Value, json};
-use tx_indexer_fingerprints::types::{InputSortingType, OutputStructureType, OutputType};
+use tx_indexer_fingerprints::types::{InputSortingType, OutputStructureType};
 use tx_indexer_fingerprints::{input, input_with_prevout, output, transaction};
-use tx_indexer_primitives::HasVersion;
+use tx_indexer_primitives::{HasVersion, OutputType};
 
 fn decode_tx(hex_str: &str) -> Result<Transaction, String> {
     let bytes = hex::decode(hex_str).map_err(|e| format!("Invalid hex: {e}"))?;

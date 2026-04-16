@@ -1,7 +1,6 @@
-use tx_indexer_fingerprints::HasOutputFingerprints;
 use tx_indexer_primitives::{
     handle::TxHandle,
-    traits::abstract_types::{HasNLockTime, OutputCount, TxConstituent},
+    traits::abstract_types::{HasNLockTime, HasScriptPubkey, OutputCount, TxConstituent},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,10 +59,7 @@ impl ScriptTypesMatchingChangeIdentification {
         tx_out: impl TxConstituent<Handle = TxHandle<'a>>,
     ) -> TxOutChangeAnnotation {
         let tx = tx_out.containing_tx();
-        let mut input_types = tx.inputs().map(|input| {
-            let prevout = input.prev_txout()?;
-            Some(prevout.output_type())
-        });
+        let mut input_types = tx.inputs().map(|input| input.output_type());
 
         let Some(input_type) = input_types.next().flatten() else {
             return TxOutChangeAnnotation::NotChange;

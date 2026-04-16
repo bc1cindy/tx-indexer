@@ -1,6 +1,6 @@
 use bitcoin::Amount;
 
-use crate::{AnyOutId, AnyTxId, ScriptPubkeyHash};
+use crate::{AnyOutId, AnyTxId, OutputType, ScriptPubkeyHash, classify_script_pubkey};
 
 // Should be implemented by any type that is contained within a transaction.
 pub trait TxConstituent {
@@ -42,14 +42,12 @@ pub trait AbstractTxIn {
 }
 
 /// Trait for transaction outputs
-pub trait AbstractTxOut {
+pub trait AbstractTxOut: HasScriptPubkey {
     /// Returns the value of the output
     fn value(&self) -> Amount;
     /// Returns the script pubkey hash (20-byte hash) if available
     /// Returns None if the script doesn't contain a standard hash or is not supported
     fn script_pubkey_hash(&self) -> ScriptPubkeyHash;
-    /// Returns the full scriptPubKey bytes
-    fn script_pubkey_bytes(&self) -> Vec<u8>;
 }
 
 /// Trait for transaction looking things. Generic over the ids as they can be either loose or dense.
@@ -89,6 +87,10 @@ pub trait HasWitnessData {
 /// Full scriptPubKey bytes for a transaction output
 pub trait HasScriptPubkey {
     fn script_pubkey_bytes(&self) -> Vec<u8>;
+
+    fn output_type(&self) -> OutputType {
+        classify_script_pubkey(&self.script_pubkey_bytes())
+    }
 }
 
 /// Transaction version

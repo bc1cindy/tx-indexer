@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
 use bitcoin::Amount;
-use tx_indexer_primitives::{HasPrevOutput, HasScriptPubkey, HasSequence, HasValue};
+use tx_indexer_primitives::{HasPrevOutput, HasScriptPubkey, HasSequence, HasValue, OutputType};
 
-use crate::classify::classify_script_pubkey;
-use crate::types::{InputSortingType, OutputStructureType, OutputType};
+use crate::types::{InputSortingType, OutputStructureType};
 
 /// Returns true if any input signals RBF.
 pub fn tx_signals_rbf(inputs: &[impl HasSequence]) -> bool {
@@ -28,10 +27,7 @@ pub fn address_reuse(outputs: &[impl HasScriptPubkey], prevouts: &[impl HasScrip
 
 /// Returns true if prevouts have more than one distinct scriptPubKey type.
 pub fn mixed_input_types(prevouts: &[impl HasScriptPubkey]) -> bool {
-    let types: HashSet<OutputType> = prevouts
-        .iter()
-        .map(|p| classify_script_pubkey(&p.script_pubkey_bytes()))
-        .collect();
+    let types: HashSet<OutputType> = prevouts.iter().map(|p| p.output_type()).collect();
     types.len() > 1
 }
 

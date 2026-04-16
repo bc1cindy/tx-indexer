@@ -2,6 +2,7 @@ pub mod dense;
 pub mod handle;
 pub mod indecies;
 pub mod loose;
+pub mod output_type;
 pub mod parser;
 pub mod sled;
 pub mod test_utils;
@@ -14,6 +15,7 @@ pub mod integration;
 #[cfg(test)]
 mod tests;
 
+pub use output_type::{OutputType, classify_script_pubkey};
 pub use traits::abstract_types::{
     AbstractTransaction, AbstractTxIn, AbstractTxOut, HasPrevOutput, HasScriptPubkey, HasSequence,
     HasValue, HasVersion, HasWitnessData,

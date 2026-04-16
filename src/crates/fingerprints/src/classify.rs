@@ -1,33 +1,11 @@
 use bitcoin::Script;
 use bitcoin::ecdsa::Signature as EcdsaSignature;
 use bitcoin::script::Instruction;
-
-use crate::types::OutputType;
+use tx_indexer_primitives::OutputType;
 
 /// Classify a scriptPubKey by type from raw bytes.
 pub fn classify_script_pubkey(spk: &[u8]) -> OutputType {
-    let script = Script::from_bytes(spk);
-
-    if script.is_op_return() {
-        return OutputType::OpReturn;
-    }
-    if script.is_p2pkh() {
-        return OutputType::P2pkh;
-    }
-    if script.is_p2sh() {
-        return OutputType::P2sh;
-    }
-    if script.is_p2wpkh() {
-        return OutputType::P2wpkh;
-    }
-    if script.is_p2wsh() {
-        return OutputType::P2wsh;
-    }
-    if script.is_p2tr() {
-        return OutputType::P2tr;
-    }
-
-    OutputType::NonStandard
+    tx_indexer_primitives::classify_script_pubkey(spk)
 }
 
 /// Extract ECDSA signature byte vectors from scriptSig bytes.

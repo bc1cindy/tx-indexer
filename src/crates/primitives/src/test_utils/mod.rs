@@ -8,7 +8,7 @@ use crate::{
     traits::HasNLockTime,
     traits::abstract_types::{
         AbstractTransaction, AbstractTxIn, AbstractTxOut, EnumerateOutputValueInArbitraryOrder,
-        EnumerateSpentTxOuts, InputCount, OutputCount, TxConstituent,
+        EnumerateSpentTxOuts, HasScriptPubkey, InputCount, OutputCount, TxConstituent,
     },
 };
 
@@ -112,6 +112,12 @@ impl DummyTxOutData {
     }
 }
 
+impl HasScriptPubkey for DummyTxOutData {
+    fn script_pubkey_bytes(&self) -> Vec<u8> {
+        self.script_pubkey.clone()
+    }
+}
+
 impl AbstractTxOut for DummyTxOutData {
     fn value(&self) -> Amount {
         Amount::from_sat(self.value)
@@ -119,10 +125,6 @@ impl AbstractTxOut for DummyTxOutData {
 
     fn script_pubkey_hash(&self) -> ScriptPubkeyHash {
         Hash160::hash(&self.script_pubkey).to_byte_array()
-    }
-
-    fn script_pubkey_bytes(&self) -> Vec<u8> {
-        self.script_pubkey.clone()
     }
 }
 

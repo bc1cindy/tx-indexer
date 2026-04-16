@@ -7,7 +7,7 @@ pub use fingerprints::input::{self, HasInputFingerprints};
 pub use fingerprints::input_with_prevout;
 pub use fingerprints::output::{self, HasOutputFingerprints};
 pub use fingerprints::transaction;
-pub use types::{InputSortingType, OutputStructureType, OutputType};
+pub use types::{InputSortingType, OutputStructureType};
 
 #[cfg(test)]
 mod tests;
