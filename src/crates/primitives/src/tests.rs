@@ -7,10 +7,12 @@ mod primitive_tests {
         sync::{Arc, Mutex},
     };
 
-    use crate::dense::{TxId, TxOutId};
     use crate::integration::run_harness;
     use crate::test_utils::temp_dir;
-    use crate::unified::sync_from_tip;
+    use crate::{
+        UnifiedStorage,
+        dense::{DenseStorageBuilder, TxId, TxOutId},
+    };
 
     /// Path to the multi-blk-file fixture (acts as a Bitcoin Core datadir).
     fn fixture_dir() -> PathBuf {
@@ -40,8 +42,9 @@ mod primitive_tests {
 
         // Index the whole chain forward using sync_from_tip.
         let tmp = temp_dir("fixture_multi_blk");
-        let storage =
-            sync_from_tip(&fixture, &tmp, tip_height).expect("sync_from_tip should succeed");
+        let storage: UnifiedStorage = DenseStorageBuilder::sync_from_tip(fixture, tmp, tip_height)?
+            .build()?
+            .into();
 
         // This is a regtest chain with only coinbase transactions (one per block),
         // so total tx count == number of blocks == tip_height + 1.

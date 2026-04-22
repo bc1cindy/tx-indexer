@@ -14,6 +14,13 @@ use varint::read_varint;
 /// Bitcoin Core: `\x00obfuscate_key`.
 const OBFUSCATE_KEY_KEY: &[u8] = b"\x00obfuscate_key";
 
+/// Key prefix for block index entries (CDiskBlockIndex), followed by a 32-byte block hash.
+const KEY_BLOCK_LOCATION: &[u8] = b"b";
+/// Key prefix for per-file info entries (CBlockFileInfo), followed by a 4-byte LE file number.
+const KEY_BLOCK_FILE_INFO: &[u8] = b"f";
+/// Key for the last-block-file number (single byte, no suffix).
+const KEY_LAST_BLOCK_FILE: &[u8] = b"l";
+
 /// Location of a block in the blk*.dat files, from a `'b'` + block_hash entry.
 #[derive(Debug, Clone)]
 pub struct BlockLocation {
@@ -79,9 +86,12 @@ impl BlockIndex {
 
     /// Last block file number (e.g. 4300 means blk04300.dat is the newest).
     ///
-    /// Reads the `'l'` key from the index.
+    /// Reads the [`KEY_LAST_BLOCK_FILE`] key from the index.
     pub fn last_block_file(&mut self) -> Result<u32, Error> {
-        let raw = self.db.get(b"l").ok_or(Error::KeyNotFound("l"))?;
+        let raw = self
+            .db
+            .get(KEY_LAST_BLOCK_FILE)
+            .ok_or(Error::KeyNotFound("l"))?;
         let deobfuscated = self.deobfuscate(&raw);
         // Serialized as a 4-byte little-endian int.
         let bytes: [u8; 4] = deobfuscated.try_into().map_err(|_| Error::UnexpectedEof)?;
@@ -90,10 +100,10 @@ impl BlockIndex {
 
     /// Metadata for a given block file number.
     ///
-    /// Reads the `'f'` + 4-byte-LE file number key.
+    /// Reads the [`KEY_BLOCK_FILE_INFO`] + 4-byte-LE file number key.
     pub fn block_file_info(&mut self, file_number: u32) -> Result<BlockFileInfo, Error> {
-        let mut key = Vec::with_capacity(5);
-        key.push(b'f');
+        let mut key = Vec::with_capacity(KEY_BLOCK_FILE_INFO.len() + 4);
+        key.extend_from_slice(KEY_BLOCK_FILE_INFO);
         key.extend_from_slice(&file_number.to_le_bytes());
 
         let raw = self.db.get(&key).ok_or(Error::KeyNotFound("f"))?;
@@ -103,10 +113,10 @@ impl BlockIndex {
 
     /// Look up a block's location in the blk files by its hash.
     ///
-    /// Reads the `'b'` + 32-byte block hash key (CDiskBlockIndex).
+    /// Reads the [`KEY_BLOCK_LOCATION`] + 32-byte block hash key (CDiskBlockIndex).
     pub fn block_location(&mut self, block_hash: &[u8; 32]) -> Result<BlockLocation, Error> {
-        let mut key = Vec::with_capacity(33);
-        key.push(b'b');
+        let mut key = Vec::with_capacity(KEY_BLOCK_LOCATION.len() + 32);
+        key.extend_from_slice(KEY_BLOCK_LOCATION);
         key.extend_from_slice(block_hash);
 
         let raw = self.db.get(&key).ok_or(Error::KeyNotFound("b"))?;
@@ -116,11 +126,13 @@ impl BlockIndex {
 
     /// Scan all block entries to find the best-chain tip hash.
     ///
-    /// Iterates every `'b'` + hash entry in the index and returns the hash of the
-    /// block with the highest height that has its data stored on disk.
+    /// Iterates every [`KEY_BLOCK_LOCATION`] + hash entry in the index and returns the hash
+    /// of the block with the highest height that has its data stored on disk.
     pub fn best_block(&mut self) -> Result<[u8; 32], Error> {
+        let entry_len = KEY_BLOCK_LOCATION.len() + 32;
+
         let mut iter = self.db.new_iter().map_err(Error::LevelDb)?;
-        iter.seek(b"b");
+        iter.seek(KEY_BLOCK_LOCATION);
 
         let mut best_hash = [0u8; 32];
         let mut best_height = u32::MAX; // sentinel meaning "none found yet"
@@ -130,17 +142,17 @@ impl BlockIndex {
             let Some((key, val)) = iter.current() else {
                 break;
             };
-            if key.first() != Some(&b'b') {
+            if !key.starts_with(KEY_BLOCK_LOCATION) {
                 break;
             }
-            if key.len() == 33 {
+            if key.len() == entry_len {
                 let deobfuscated = self.deobfuscate(&val);
                 // Only consider blocks whose data is stored on disk.
                 if let Ok(loc) = parse_block_location(&deobfuscated)
                     && (!found || loc.height > best_height)
                 {
                     best_height = loc.height;
-                    best_hash.copy_from_slice(&key[1..33]);
+                    best_hash.copy_from_slice(&key[KEY_BLOCK_LOCATION.len()..entry_len]);
                     found = true;
                 }
             }

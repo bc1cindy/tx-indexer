@@ -328,6 +328,7 @@ pub enum BlockFileError {
     Parse(bitcoin_slices::Error),
     SpkDb(SledScriptPubkeyDbError),
     CorruptId(),
+    BlockIndex(bitcoin_block_index::Error),
 }
 
 impl std::fmt::Display for BlockFileError {
@@ -340,6 +341,7 @@ impl std::fmt::Display for BlockFileError {
             BlockFileError::Parse(e) => write!(f, "parse: {:?}", e),
             BlockFileError::SpkDb(e) => write!(f, "spk db: {:?}", e),
             BlockFileError::CorruptId() => write!(f, "corrupt id"),
+            BlockFileError::BlockIndex(e) => write!(f, "block index: {e}"),
         }
     }
 }
@@ -351,7 +353,8 @@ impl std::error::Error for BlockFileError {
             BlockFileError::Parse(_)
             | BlockFileError::UnexpectedEof { .. }
             | BlockFileError::SpkDb(_)
-            | BlockFileError::CorruptId() => None,
+            | BlockFileError::CorruptId()
+            | BlockFileError::BlockIndex(_) => None,
         }
     }
 }

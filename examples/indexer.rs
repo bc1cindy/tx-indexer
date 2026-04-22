@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc, time::Instant};
 
 use tx_indexer_heuristics::ast::SignalsRbf;
 use tx_indexer_pipeline::{context::PipelineContext, engine::Engine, ops::AllDenseTxs};
-use tx_indexer_primitives::{test_utils::temp_dir, unified::sync_from_tip};
+use tx_indexer_primitives::{UnifiedStorage, dense::DenseStorageBuilder, test_utils::temp_dir};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -55,7 +55,11 @@ fn main() {
     let out_dir = temp_dir("tx-indexer-example");
 
     let start = Instant::now();
-    let unified = sync_from_tip(&datadir, &out_dir, depth).unwrap_or_else(|e| {
+    let builder = DenseStorageBuilder::sync_from_tip(datadir, out_dir, depth).unwrap_or_else(|e| {
+        eprintln!("Error: failed to sync block index: {e}");
+        std::process::exit(1);
+    });
+    let unified: UnifiedStorage = builder.try_into().unwrap_or_else(|e| {
         eprintln!("Error: failed to build indices: {e}");
         std::process::exit(1);
     });

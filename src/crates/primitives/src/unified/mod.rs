@@ -1,19 +1,14 @@
-use crate::dense::DenseStorage;
+use crate::dense::{DenseStorage, DenseStorageBuilder, build_indices};
 use crate::handle::{TxHandle, TxInHandle, TxOutHandle};
 use crate::loose::InMemoryIndex;
+use crate::loose::LooseIndexBuilder;
 use crate::parser::BlockFileError;
 use crate::traits::graph_index::{
     IndexedGraph, OutpointIndex, PrevOutIndex, ScriptPubkeyIndex, TxInIndex, TxInOwnerIndex,
     TxIndex, TxIoIndex, TxOutDataIndex,
 };
 use crate::{ScriptPubkeyHash, dense, loose, traits::abstract_types::AbstractTransaction};
-use crate::{
-    dense::build_indices,
-    loose::LooseIndexBuilder,
-    sled::{db::SledDBFactory, spk_db::SledScriptPubkeyDb},
-};
 use bitcoin::Amount;
-use std::{ops::Range, path::PathBuf};
 
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Ord, PartialOrd)]
@@ -187,17 +182,6 @@ impl From<loose::TxInId> for AnyInId {
     }
 }
 
-pub struct DenseBuildSpec {
-    pub blocks_dir: PathBuf,
-    pub range: Range<u64>,
-    pub paths: dense::IndexPaths,
-    pub spk_db: SledScriptPubkeyDb,
-    /// Blk file layout hints: `(file_no, height_first, height_last)`, sorted by `file_no`.
-    ///
-    /// If empty, assumes all blocks are in `blk00000.dat` starting at height 0.
-    pub file_hints: Vec<(u32, u32, u32)>,
-}
-
 pub struct UnifiedStorage {
     dense: Option<DenseStorage>,
     loose: Option<InMemoryIndex>,
@@ -213,21 +197,23 @@ impl From<LooseIndexBuilder> for UnifiedStorage {
 }
 
 // TODO: specific error for unified storage
-impl TryFrom<DenseBuildSpec> for UnifiedStorage {
-    type Error = BlockFileError;
+impl TryFrom<DenseStorageBuilder> for UnifiedStorage {
+    type Error = SyncError;
 
-    fn try_from(spec: DenseBuildSpec) -> Result<Self, Self::Error> {
-        let dense = build_indices(
-            spec.blocks_dir,
-            spec.range,
-            spec.file_hints,
-            spec.paths,
-            spec.spk_db,
-        )?;
+    fn try_from(builder: DenseStorageBuilder) -> Result<Self, Self::Error> {
         Ok(Self {
-            dense: Some(dense),
+            dense: Some(build_indices(builder)?),
             loose: None,
         })
+    }
+}
+
+impl From<DenseStorage> for UnifiedStorage {
+    fn from(dense: DenseStorage) -> Self {
+        Self {
+            dense: Some(dense),
+            loose: None,
+        }
     }
 }
 
@@ -250,81 +236,6 @@ impl std::fmt::Display for SyncError {
 }
 
 impl std::error::Error for SyncError {}
-
-/// Build a [`UnifiedStorage`] for the `depth + 1` blocks ending at the chain tip.
-///
-/// `bitcoind_datadir` is Bitcoin Core's data directory (e.g. `~/.bitcoin/` or
-/// `~/.bitcoin/regtest/`); `blocks/` and `blocks/index/` are derived from it automatically.
-///
-/// `index_dir` is the output directory where all dense index files and the sled database
-/// will be written. The caller is responsible for creating this directory before calling.
-pub fn sync_from_tip(
-    bitcoind_datadir: impl Into<PathBuf>,
-    index_dir: impl Into<PathBuf>,
-    depth: u32,
-) -> Result<UnifiedStorage, SyncError> {
-    use bitcoin_block_index::BlockIndex;
-
-    let datadir = bitcoind_datadir.into();
-    let blocks_dir = datadir.join("blocks");
-    let index_path = datadir.join("blocks").join("index");
-    let index_dir = index_dir.into();
-
-    let paths = dense::IndexPaths {
-        txptr: index_dir.join("txptr.bin"),
-        block_tx: index_dir.join("block_tx.bin"),
-        in_prevout: index_dir.join("in_prevout.bin"),
-        out_spent: index_dir.join("out_spent.bin"),
-    };
-    let spk_db = SledDBFactory::open(index_dir.join("spk_db"))
-        .map_err(SyncError::Sled)?
-        .spk_db()
-        .map_err(SyncError::Sled)?;
-
-    let mut index = BlockIndex::open(&index_path).map_err(SyncError::BlockIndex)?;
-
-    let tip_hash = index.best_block().map_err(SyncError::BlockIndex)?;
-    let chain = index
-        .walk_back(&tip_hash, depth)
-        .map_err(SyncError::BlockIndex)?;
-
-    let start_height = chain
-        .first()
-        .expect("walk_back returns depth+1 items")
-        .height as u64;
-    let end_height = chain
-        .last()
-        .expect("walk_back returns depth+1 items")
-        .height as u64;
-
-    // Collect file layout hints from BlockIndex so the parser can locate the right blk files.
-    let last_file = index.last_block_file().map_err(SyncError::BlockIndex)?;
-    let mut file_hints: Vec<(u32, u32, u32)> = Vec::new();
-
-    for file_no in 0..=last_file {
-        let info = index
-            .block_file_info(file_no)
-            .map_err(SyncError::BlockIndex)?;
-        if (info.height_last as u64) < start_height {
-            continue;
-        }
-        // TODO: This assumes block heights are monotonically increasing.
-        // Due to reorgs this may not always be the case
-        if (info.height_first as u64) > end_height {
-            break;
-        }
-        file_hints.push((file_no, info.height_first, info.height_last));
-    }
-
-    let spec = DenseBuildSpec {
-        blocks_dir,
-        range: start_height..end_height + 1,
-        paths,
-        spk_db,
-        file_hints,
-    };
-    UnifiedStorage::try_from(spec).map_err(SyncError::Parse)
-}
 
 impl UnifiedStorage {
     pub fn with_loose(mut self, builder: LooseIndexBuilder) -> Self {

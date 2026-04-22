@@ -9,17 +9,15 @@ use bitcoin::{Address, Amount, Block, BlockHash, Transaction, Txid};
 use corepc_node::{Conf, Node};
 
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::dense::TxId;
+use crate::dense::{DenseStorageBuilder, TxId};
 
-use crate::dense::build_indices;
-use crate::sled::db::SledDBFactory;
+use crate::test_utils::temp_dir;
 
 /// Holds a running regtest node and its wallet RPC client. Dropping stops the node.
 pub struct NodeHarness {
     _node: Node,
-    pub blocks_dir: PathBuf,
+    pub data_dir: PathBuf,
 }
 
 impl NodeHarness {
@@ -31,10 +29,10 @@ impl NodeHarness {
         conf.args.push("-fallbackfee=0.00001");
         let node = Node::from_downloaded_with_conf(&conf)?;
         // Regtest stores chain data under <datadir>/regtest/; blocks are in regtest/blocks.
-        let blocks_dir = node.workdir().join("regtest").join("blocks");
+        let data_dir = node.workdir().join("regtest");
         Ok(Self {
             _node: node,
-            blocks_dir,
+            data_dir,
         })
     }
 
@@ -137,7 +135,7 @@ where
     // Give bitcoind time to flush block files to disk.
     std::thread::sleep(Duration::from_secs(2));
 
-    let blocks_dir = &harness.blocks_dir;
+    let blocks_dir = &harness.data_dir.join("blocks");
     let blk0 = blocks_dir.join("blk00000.dat");
     if !blk0.exists() {
         let entries_len = std::fs::read_dir(blocks_dir)
@@ -151,62 +149,19 @@ where
         ));
     }
 
+    // Dense parser expects Bitcoin Core's chain datadir (`.../regtest`), not `.../regtest/blocks`.
+    let data_dir = harness.data_dir.to_path_buf();
     // Tip height is 0-based; number of blocks = tip + 1.
     let block_count = block_height_after + 1;
-    let paths = crate::dense::IndexPaths {
-        txptr: temp_txptr_path(),
-        block_tx: temp_block_tx_path(),
-        in_prevout: temp_in_prevout_path(),
-        out_spent: temp_out_spent_path(),
-    };
-    let spk_db_path = std::env::temp_dir().join(format!(
-        "primitives_spk_{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time went backwards")
-            .as_nanos()
-    ));
-    let spk_db = SledDBFactory::open(spk_db_path)?.spk_db()?;
-    let storage = build_indices(
-        harness.blocks_dir.clone(),
+    // Integration tests build a full in-memory picture from blk files directly,
+    // which avoids depending on bitcoind's LevelDB block index flush timing.
+    let builder = DenseStorageBuilder::new(
+        data_dir,
+        temp_dir("primitives_integration"),
         0..block_count,
-        vec![],
-        paths,
-        spk_db,
-    )
-    .map_err(|e| anyhow::anyhow!("parse_blocks: {:?}", e))?;
+        Vec::new(),
+    );
+    let storage = builder.build()?;
 
     expected(&harness, &storage, &expected_txids)
-}
-
-fn temp_txptr_path() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_nanos();
-    std::env::temp_dir().join(format!("confirmed_txptr_{}.bin", nanos))
-}
-
-fn temp_block_tx_path() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_nanos();
-    std::env::temp_dir().join(format!("block_tx_end_{}.bin", nanos))
-}
-
-fn temp_in_prevout_path() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_nanos();
-    std::env::temp_dir().join(format!("in_prevout_outid_{}.bin", nanos))
-}
-
-fn temp_out_spent_path() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_nanos();
-    std::env::temp_dir().join(format!("out_spent_by_inid_{}.bin", nanos))
 }

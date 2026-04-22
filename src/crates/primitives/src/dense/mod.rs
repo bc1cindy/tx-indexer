@@ -8,8 +8,9 @@ use crate::{
         TxPtr,
     },
     parser::{BlockFileError, Parser},
-    sled::spk_db::SledScriptPubkeyDb,
+    sled::{db::SledDBFactory, spk_db::SledScriptPubkeyDb},
     traits::ScriptPubkeyDb,
+    unified::SyncError,
 };
 
 #[repr(transparent)]
@@ -68,39 +69,177 @@ pub struct IndexPaths {
     pub out_spent: PathBuf,
 }
 
-pub struct DenseStorage {
-    store: BlkFileStore,
-    block_height_offset: u64,
-    txptr_index: ConfirmedTxPtrIndex,
-    block_tx_index: BlockTxIndex,
-    in_prevout_index: InPrevoutIndex,
-    out_spent_index: OutSpentByIndex,
-    spk_db: SledScriptPubkeyDb,
-}
+// TODO: new method for above
 
-pub fn build_indices(
-    blocks_dir: impl Into<PathBuf>,
+pub struct DenseStorageBuilder {
+    data_dir: PathBuf,
+    index_dir: PathBuf,
     range: std::ops::Range<u64>,
     file_hints: Vec<(u32, u32, u32)>,
-    paths: IndexPaths,
-    mut spk_db: SledScriptPubkeyDb,
-) -> Result<DenseStorage, BlockFileError> {
-    let block_height_offset = range.start;
-    let mut parser = Parser::new(blocks_dir).with_file_hints(file_hints);
-    let mut txptr_index = ConfirmedTxPtrIndex::create(&paths.txptr).map_err(BlockFileError::Io)?;
-    let mut block_tx_index = BlockTxIndex::create(&paths.block_tx).map_err(BlockFileError::Io)?;
-    let mut in_prevout_index =
-        InPrevoutIndex::create(&paths.in_prevout).map_err(BlockFileError::Io)?;
-    let mut out_spent_index =
-        OutSpentByIndex::create(&paths.out_spent).map_err(BlockFileError::Io)?;
-    parser.parse_blocks(
-        range,
-        &mut txptr_index,
-        &mut block_tx_index,
-        &mut in_prevout_index,
-        &mut out_spent_index,
-        &mut spk_db,
-    )?;
+}
+
+impl DenseStorageBuilder {
+    pub fn new(
+        data_dir: PathBuf,
+        index_dir: PathBuf,
+        range: std::ops::Range<u64>,
+        file_hints: Vec<(u32, u32, u32)>,
+    ) -> Self {
+        Self {
+            data_dir,
+            index_dir,
+            range,
+            file_hints,
+        }
+    }
+
+    /// Build a [`DenseStorage`] for every block from genesis up to the chain tip.
+    ///
+    /// `data_dir` is Bitcoin Core's data directory (e.g. `~/.bitcoin/` or
+    /// `~/.bitcoin/regtest/`); `blocks/` and `blocks/index/` are derived from it automatically.
+    ///
+    /// `index_dir` is the output directory where all dense index files and the sled database
+    /// will be written. The caller is responsible for creating this directory before calling.
+    pub fn sync_from_genesis(
+        data_dir: PathBuf,
+        index_dir: PathBuf,
+    ) -> Result<Self, BlockFileError> {
+        use bitcoin_block_index::BlockIndex;
+        let block_index_path = data_dir.join("blocks/index");
+
+        let mut index = BlockIndex::open(&block_index_path).map_err(BlockFileError::BlockIndex)?;
+
+        let tip_hash = index.best_block().map_err(BlockFileError::BlockIndex)?;
+        let tip_loc = index
+            .block_location(&tip_hash)
+            .map_err(BlockFileError::BlockIndex)?;
+        let end_height = tip_loc.height as u64;
+
+        let file_hints = Self::collect_file_hints(&mut index, 0, end_height)?;
+
+        let builder = DenseStorageBuilder {
+            data_dir,
+            index_dir,
+            range: 0..end_height + 1,
+            file_hints,
+        };
+        Ok(builder)
+    }
+
+    /// Build a [`DenseStorage`] for the `depth + 1` blocks ending at the chain tip.
+    ///
+    /// `bitcoind_datadir` is Bitcoin Core's data directory (e.g. `~/.bitcoin/` or
+    /// `~/.bitcoin/regtest/`); `blocks/` and `blocks/index/` are derived from it automatically.
+    ///
+    /// `index_dir` is the output directory where all dense index files and the sled database
+    /// will be written. The caller is responsible for creating this directory before calling.
+    pub fn sync_from_tip(
+        data_dir: PathBuf,
+        index_dir: PathBuf,
+        depth: u32,
+    ) -> Result<Self, BlockFileError> {
+        // TODO: check if the indecies were built already past or before the depth
+        use bitcoin_block_index::BlockIndex;
+        let block_index_path = data_dir.join("blocks/index");
+
+        let mut index = BlockIndex::open(&block_index_path).map_err(BlockFileError::BlockIndex)?;
+
+        let tip_hash = index.best_block().map_err(BlockFileError::BlockIndex)?;
+        let chain = index
+            .walk_back(&tip_hash, depth)
+            .map_err(BlockFileError::BlockIndex)?;
+
+        let start_height = chain
+            .first()
+            .expect("walk_back returns depth+1 items")
+            .height as u64;
+        let end_height = chain
+            .last()
+            .expect("walk_back returns depth+1 items")
+            .height as u64;
+
+        let file_hints = Self::collect_file_hints(&mut index, start_height, end_height)?;
+
+        let builder = DenseStorageBuilder {
+            data_dir,
+            index_dir,
+            range: start_height..end_height + 1,
+            file_hints,
+        };
+        Ok(builder)
+    }
+
+    /// Collect `(file_no, height_first, height_last)` hints for every blk file that
+    /// overlaps the inclusive height range `[start_height, end_height]`, so the parser
+    /// can skip blk files outside the requested range.
+    fn collect_file_hints(
+        index: &mut bitcoin_block_index::BlockIndex,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<(u32, u32, u32)>, BlockFileError> {
+        let last_file = index
+            .last_block_file()
+            .map_err(BlockFileError::BlockIndex)?;
+        let mut file_hints: Vec<(u32, u32, u32)> = Vec::new();
+
+        for file_no in 0..=last_file {
+            let info = index
+                .block_file_info(file_no)
+                .map_err(BlockFileError::BlockIndex)?;
+            if (info.height_last as u64) < start_height {
+                continue;
+            }
+            // TODO: This assumes block heights are monotonically increasing.
+            // Due to reorgs this may not always be the case
+            if (info.height_first as u64) > end_height {
+                break;
+            }
+            file_hints.push((file_no, info.height_first, info.height_last));
+        }
+
+        Ok(file_hints)
+    }
+
+    pub fn build(self) -> Result<DenseStorage, SyncError> {
+        build_indices(self)
+    }
+}
+
+pub(crate) fn build_indices(builder: DenseStorageBuilder) -> Result<DenseStorage, SyncError> {
+    let datadir = builder.data_dir;
+    let blocks_dir = datadir.join("blocks");
+    let index_dir = builder.index_dir;
+    let paths = IndexPaths {
+        txptr: index_dir.join("txptr.bin"),
+        block_tx: index_dir.join("block_tx.bin"),
+        in_prevout: index_dir.join("in_prevout.bin"),
+        out_spent: index_dir.join("out_spent.bin"),
+    };
+    let mut spk_db = SledDBFactory::open(index_dir.join("spk_db"))
+        .map_err(SyncError::Sled)?
+        .spk_db()
+        .map_err(SyncError::Sled)?;
+
+    let block_height_offset = builder.range.start;
+    let mut parser = Parser::new(blocks_dir).with_file_hints(builder.file_hints);
+    let mut txptr_index = ConfirmedTxPtrIndex::create(&paths.txptr)
+        .map_err(|e| SyncError::Parse(BlockFileError::Io(e)))?;
+    let mut block_tx_index = BlockTxIndex::create(&paths.block_tx)
+        .map_err(|e| SyncError::Parse(BlockFileError::Io(e)))?;
+    let mut in_prevout_index = InPrevoutIndex::create(&paths.in_prevout)
+        .map_err(|e| SyncError::Parse(BlockFileError::Io(e)))?;
+    let mut out_spent_index = OutSpentByIndex::create(&paths.out_spent)
+        .map_err(|e| SyncError::Parse(BlockFileError::Io(e)))?;
+    parser
+        .parse_blocks(
+            builder.range,
+            &mut txptr_index,
+            &mut block_tx_index,
+            &mut in_prevout_index,
+            &mut out_spent_index,
+            &mut spk_db,
+        )
+        .map_err(SyncError::Parse)?;
     let storage = DenseStorage {
         store: parser.into_blk_store(),
         block_height_offset,
@@ -111,6 +250,15 @@ pub fn build_indices(
         spk_db,
     };
     Ok(storage)
+}
+pub struct DenseStorage {
+    store: BlkFileStore,
+    block_height_offset: u64,
+    txptr_index: ConfirmedTxPtrIndex,
+    block_tx_index: BlockTxIndex,
+    in_prevout_index: InPrevoutIndex,
+    out_spent_index: OutSpentByIndex,
+    spk_db: SledScriptPubkeyDb,
 }
 
 impl DenseStorage {

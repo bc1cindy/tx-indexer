@@ -65,10 +65,7 @@ mod tests {
         ops::{AllDenseTxs, AllLooseTxs},
     };
     use tx_indexer_primitives::UnifiedStorage;
-    use tx_indexer_primitives::dense::IndexPaths;
-    use tx_indexer_primitives::integration::NodeHarness;
     use tx_indexer_primitives::loose::LooseIndexBuilder;
-    use tx_indexer_primitives::sled::db::SledDBFactory;
     use tx_indexer_primitives::{
         loose::{TxId, TxOutId},
         test_utils::{DummyTxData, DummyTxOutData, temp_dir, write_single_block_file},
@@ -163,27 +160,20 @@ mod tests {
 
     #[test]
     fn test_dense_same_address_mainnet_block() -> anyhow::Result<()> {
-        let harness = NodeHarness::new(None)?;
         let block_bytes = mainnet_702861();
-        let blocks_dir = harness.blocks_dir.join("mainnet_702861");
+        let data_dir = temp_dir("tx_indexer_dense_mainnet_data");
+        let blocks_dir = data_dir.join("blocks");
         fs::create_dir_all(&blocks_dir)?;
         write_single_block_file(&blocks_dir, block_bytes)?;
 
         let index_dir = temp_dir("tx_indexer_dense_mainnet_idx");
-        let paths = IndexPaths {
-            txptr: index_dir.join("txptr.idx"),
-            block_tx: index_dir.join("block_tx.idx"),
-            in_prevout: index_dir.join("in_prevout.idx"),
-            out_spent: index_dir.join("out_spent.idx"),
-        };
-        let spk_db = SledDBFactory::open(temp_dir("tx_indexer_dense_mainnet_spk"))?.spk_db()?;
-        let unified = UnifiedStorage::try_from(tx_indexer_primitives::unified::DenseBuildSpec {
-            blocks_dir: blocks_dir.clone(),
-            range: 0..1,
-            paths,
-            spk_db,
-            file_hints: vec![],
-        })?;
+        let builder = tx_indexer_primitives::dense::DenseStorageBuilder::new(
+            data_dir,
+            index_dir,
+            0..1,
+            vec![],
+        );
+        let unified = UnifiedStorage::try_from(builder)?;
 
         let ctx = Arc::new(PipelineContext::new());
         let mut engine = Engine::new(ctx.clone(), Arc::new(unified));
