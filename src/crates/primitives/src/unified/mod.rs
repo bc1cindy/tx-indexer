@@ -312,11 +312,11 @@ impl UnifiedStorage {
             .expect("loose txid not found in storage")
     }
 
-    // Returns empty Vec when loose storage is absent
-    pub fn loose_txids(&self) -> Vec<AnyTxId> {
-        self.loose.as_ref().map_or(Vec::new(), |loose| {
-            loose.tx_order.iter().copied().map(AnyTxId::from).collect()
-        })
+    pub fn loose_txids(&self) -> impl Iterator<Item = AnyTxId> + '_ {
+        self.loose
+            .as_ref()
+            .into_iter()
+            .flat_map(|loose| loose.tx_order.iter().copied().map(AnyTxId::from))
     }
 
     pub fn loose_txids_len(&self) -> usize {
@@ -329,33 +329,21 @@ impl UnifiedStorage {
         })
     }
 
-    pub fn loose_txids_from(&self, start: usize) -> Vec<AnyTxId> {
-        self.loose.as_ref().map_or(Vec::new(), |loose| {
-            if start >= loose.tx_order.len() {
-                return Vec::new();
-            }
-            loose.tx_order[start..]
-                .iter()
-                .copied()
-                .map(AnyTxId::from)
-                .collect()
+    pub fn loose_txids_from(&self, start: usize) -> impl Iterator<Item = AnyTxId> + '_ {
+        self.loose.as_ref().into_iter().flat_map(move |loose| {
+            let s = start.min(loose.tx_order.len());
+            loose.tx_order[s..].iter().copied().map(AnyTxId::from)
         })
     }
 
-    pub fn dense_txids_from(&self, start: usize) -> Vec<AnyTxId> {
-        let Some(dense) = self.dense.as_ref() else {
-            // TODO: should panic or this should just be exposed on dense traits
-            return Vec::new();
-        };
-        let total = usize::try_from(dense.tx_count()).expect("dense tx count should fit in usize");
-        if start >= total {
-            // TODO: return error
-            return Vec::new();
-        }
+    pub fn dense_txids_from(&self, start: usize) -> impl Iterator<Item = AnyTxId> {
+        let total = self.dense.as_ref().map_or(0, |dense| {
+            usize::try_from(dense.tx_count()).expect("dense tx count should fit in usize")
+        });
+        let start = start.min(total);
         (start..total)
             .map(|idx| dense::TxId::new(u32::try_from(idx).expect("dense txid should fit in u32")))
             .map(AnyTxId::from)
-            .collect()
     }
 
     pub fn tx_out_ids(&self, txid: AnyTxId) -> Vec<AnyOutId> {
@@ -367,12 +355,7 @@ impl UnifiedStorage {
                     .map(|vout| AnyOutId::from(loose::TxOutId::new(lid, vout as u32)))
                     .collect()
             },
-            |ds, did| {
-                ds.get_txout_ids(did)
-                    .into_iter()
-                    .map(AnyOutId::from)
-                    .collect()
-            },
+            |ds, did| ds.get_txout_ids(did).map(AnyOutId::from).collect(),
         )
     }
 
@@ -467,12 +450,7 @@ impl TxIoIndex for UnifiedStorage {
                     .map(|vin| AnyInId::from(loose::TxInId::new(lid, vin as u32)))
                     .collect()
             },
-            |ds, did| {
-                ds.get_txin_ids(did)
-                    .into_iter()
-                    .map(AnyInId::from)
-                    .collect()
-            },
+            |ds, did| ds.get_txin_ids(did).map(AnyInId::from).collect(),
         )
     }
 

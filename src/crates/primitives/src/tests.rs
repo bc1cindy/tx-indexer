@@ -53,8 +53,7 @@ mod primitive_tests {
         let total_txs = storage.dense_txids_len();
         assert_eq!(total_txs, (tip_height + 1) as usize);
 
-        let txids = storage.dense_txids_from(0);
-        assert_eq!(txids.len(), total_txs);
+        assert_eq!(storage.dense_txids_from(0).count(), total_txs);
 
         // TODO: parse from genesis to tip and repeat assertions
 
@@ -199,8 +198,8 @@ mod primitive_tests {
                 let dense_id = *dense_id;
                 let tx = storage.get_tx(dense_id);
                 assert!(!tx.is_coinbase());
-                let txin_ids = storage.get_txin_ids(dense_id);
-                let txout_ids = storage.get_txout_ids(dense_id);
+                let txin_ids: Vec<_> = storage.get_txin_ids(dense_id).collect();
+                let txout_ids: Vec<_> = storage.get_txout_ids(dense_id).collect();
                 let (in_start, in_end) = storage.tx_in_range(dense_id);
                 let (out_start, out_end) = storage.tx_out_range(dense_id);
 
@@ -247,7 +246,7 @@ mod primitive_tests {
                     .expect("expected a non-coinbase tx");
                 let dense_id = *dense_id;
                 let tx = storage.get_tx(dense_id);
-                let txin_ids = storage.get_txin_ids(dense_id);
+                let txin_ids: Vec<_> = storage.get_txin_ids(dense_id).collect();
 
                 assert_eq!(txin_ids.len(), tx.input.len());
                 assert_eq!(txin_ids.len(), 1);
