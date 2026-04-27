@@ -517,15 +517,15 @@ impl DenseStorage {
     }
 
     /// Return all dense TxInIds for the transaction at the given dense TxId.
-    pub fn get_txin_ids(&self, txid: TxId) -> Vec<TxInId> {
+    pub fn get_txin_ids(&self, txid: TxId) -> impl Iterator<Item = TxInId> {
         let (start, end) = self.tx_in_range(txid);
-        (start..end).map(TxInId::new).collect()
+        (start..end).map(TxInId::new)
     }
 
     /// Return all dense TxOutIds for the transaction at the given dense TxId.
-    pub fn get_txout_ids(&self, txid: TxId) -> Vec<TxOutId> {
+    pub fn get_txout_ids(&self, txid: TxId) -> impl Iterator<Item = TxOutId> {
         let (start, end) = self.tx_out_range(txid);
-        (start..end).map(TxOutId::new).collect()
+        (start..end).map(TxOutId::new)
     }
 
     /// Return the first dense TxOutId that uses the given script pubkey hash.

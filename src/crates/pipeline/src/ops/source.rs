@@ -30,10 +30,7 @@ impl SourceNode for AllLooseTxsNode {
 
     fn evaluate(&self, ctx: &mut SourceNodeEvalContext<'_>) -> HashSet<AnyTxId> {
         let start = ctx.processed_loose_len();
-        ctx.unified_storage
-            .loose_txids_from(start)
-            .into_iter()
-            .collect()
+        ctx.unified_storage.loose_txids_from(start).collect()
     }
 
     fn name(&self) -> &'static str {
@@ -57,10 +54,7 @@ impl SourceNode for AllDenseTxsNode {
 
     fn evaluate(&self, ctx: &mut SourceNodeEvalContext<'_>) -> HashSet<AnyTxId> {
         let start = ctx.processed_dense_len();
-        ctx.unified_storage
-            .dense_txids_from(start)
-            .into_iter()
-            .collect()
+        ctx.unified_storage.dense_txids_from(start).collect()
     }
 
     fn name(&self) -> &'static str {
